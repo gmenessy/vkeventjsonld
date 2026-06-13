@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>VK – Veranstaltungskalender</title>
+  <meta name="description" content="Veranstaltungen suchen, filtern und entdecken.">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="vk-skip-link" href="#vk-results">Zum Inhalt springen</a>
+
+  <header class="vk-topbar vk-glass" role="banner">
+    <div class="vk-topbar__brand">
+      <span class="vk-topbar__logo" aria-hidden="true">VK</span>
+      <span class="vk-topbar__title">Veranstaltungskalender</span>
+    </div>
+    <form class="vk-search" id="vk-search-form" role="search" autocomplete="off">
+      <label class="vk-visually-hidden" for="vk-q">Veranstaltungen durchsuchen</label>
+      <span class="vk-search__icon" aria-hidden="true">🔍</span>
+      <input class="vk-search__input" id="vk-q" type="search" name="q"
+             placeholder="Suchen: Titel, Ort, Veranstalter, Stichwort …"
+             enterkeyhint="search" aria-describedby="vk-result-count">
+      <button class="vk-search__clear" id="vk-q-clear" type="button"
+              aria-label="Suche zurücksetzen" hidden>×</button>
+    </form>
+  </header>
+
+  <main class="vk-layout" id="main">
+    <!-- 1. Such-/Filterbereich -->
+    <aside class="vk-filters" id="vk-filters" aria-label="Filter">
+      <div class="vk-filters__head">
+        <h2 class="vk-filters__title">Filter</h2>
+        <button type="button" class="vk-btn vk-btn--text" id="vk-filters-reset">Zurücksetzen</button>
+      </div>
+      <div class="vk-filters__body" id="vk-filters-body"><!-- per JS gefüllt --></div>
+    </aside>
+
+    <!-- 2. Ergebnisübersicht -->
+    <section class="vk-results" id="vk-results" tabindex="-1" aria-label="Ergebnisse">
+      <div class="vk-results__bar vk-glass">
+        <p class="vk-results__count" id="vk-result-count" aria-live="polite">Lade …</p>
+        <div class="vk-results__tools">
+          <label class="vk-visually-hidden" for="vk-sort">Sortierung</label>
+          <select class="vk-select" id="vk-sort">
+            <option value="date">Datum aufsteigend</option>
+            <option value="date_desc">Datum absteigend</option>
+          </select>
+          <button type="button" class="vk-btn vk-btn--text vk-filters-toggle" id="vk-filters-open"
+                  aria-expanded="false" aria-controls="vk-filters">Filter</button>
+        </div>
+      </div>
+      <ol class="vk-cards" id="vk-cards" aria-live="polite"></ol>
+      <nav class="vk-pagination" id="vk-pagination" aria-label="Seiten"></nav>
+    </section>
+
+    <!-- 3. Detailansicht -->
+    <section class="vk-detail" id="vk-detail" aria-label="Detailansicht" aria-live="polite">
+      <div class="vk-detail__placeholder" id="vk-detail-placeholder">
+        <p>Wählen Sie eine Veranstaltung aus, um Details zu sehen.</p>
+      </div>
+      <article class="vk-detail__content" id="vk-detail-content" hidden></article>
+    </section>
+  </main>
+
+  <div class="vk-toast" id="vk-toast" role="status" aria-live="assertive" hidden></div>
+
+  <script src="assets/js/app.js" defer></script>
+</body>
+</html>
