@@ -85,9 +85,7 @@ public class EventRepository {
         StringBuilder sql = new StringBuilder(LIST_SELECT);
         MapSqlParameterSource params = new MapSqlParameterSource();
         sql.append(buildWhere(req, params));
-        sql.append("desc".equalsIgnoreCase(req.sort) || "date_desc".equalsIgnoreCase(req.sort)
-                ? " ORDER BY e.START_AT DESC, e.ID DESC"
-                : " ORDER BY e.START_AT, e.ID");
+        sql.append(buildOrderBy(req));
         sql.append(" OFFSET :off ROWS FETCH NEXT :sz ROWS ONLY");
         params.addValue("off", req.offset());
         params.addValue("sz", req.size);
@@ -98,6 +96,35 @@ public class EventRepository {
             array.add(row);
         }
         return array;
+    }
+
+    /**
+     * Sortierung. Bei {@code sort=relevance} mit Suchbegriff werden Titel-Treffer
+     * hoeher gewichtet (Oracle Text: SCORE; sonst INSTR-Score auf den Titel),
+     * danach nach Datum. Die :qN-Parameter stammen aus {@link #buildWhere}.
+     */
+    private String buildOrderBy(Query req) {
+        boolean hasQuery = req.q != null && !req.q.trim().isEmpty();
+        if ("relevance".equalsIgnoreCase(req.sort) && hasQuery) {
+            if (oracleTextEnabled) {
+                return " ORDER BY SCORE(1) DESC, e.START_AT, e.ID";
+            }
+            String[] terms = SearchTextUtil.normalizeTerm(req.q).split("\\s+");
+            StringBuilder score = new StringBuilder();
+            for (int i = 0; i < terms.length && i < 6; i++) {
+                if (terms[i].isEmpty()) {
+                    continue;
+                }
+                score.append("CASE WHEN INSTR(LOWER(e.TITLE), :q").append(i)
+                     .append(") > 0 THEN 2 ELSE 0 END + ");
+            }
+            score.append("0");
+            return " ORDER BY (" + score + ") DESC, e.START_AT, e.ID";
+        }
+        if ("desc".equalsIgnoreCase(req.sort) || "date_desc".equalsIgnoreCase(req.sort)) {
+            return " ORDER BY e.START_AT DESC, e.ID DESC";
+        }
+        return " ORDER BY e.START_AT, e.ID";
     }
 
     public long count(Query req) {

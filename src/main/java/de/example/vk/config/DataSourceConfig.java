@@ -28,11 +28,15 @@ public class DataSourceConfig {
 
         HikariConfig config = new HikariConfig();
         if ("oracle".equalsIgnoreCase(mode)) {
+            config.setDriverClassName("oracle.jdbc.OracleDriver");
             config.setJdbcUrl(url);
             config.setUsername(user);
             config.setPassword(password);
             config.setMaximumPoolSize(20);
         } else {
+            // driverClassName explizit setzen: im Servlet-Container (Tomcat) registriert
+            // sich der Treiber sonst nicht automatisch beim DriverManager ("No suitable driver").
+            config.setDriverClassName("org.h2.Driver");
             config.setJdbcUrl("jdbc:h2:mem:vk;MODE=Oracle;DB_CLOSE_DELAY=-1;CASE_INSENSITIVE_IDENTIFIERS=TRUE");
             config.setUsername("sa");
             config.setPassword("");
