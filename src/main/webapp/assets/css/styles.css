@@ -190,7 +190,8 @@ a { color: var(--vk-primary); }
   padding: var(--vk-space-4); max-height: calc(100vh - var(--vk-topbar-h) - var(--vk-space-6));
   overflow: auto;
 }
-.vk-filters__head { display: flex; align-items: center; justify-content: space-between; }
+.vk-filters__head { display: flex; align-items: center; justify-content: space-between; gap: var(--vk-space-2); flex-wrap: wrap; }
+.vk-filters__close { display: none; } /* nur im mobilen Drawer sichtbar */
 .vk-filters__title { font-size: 1.1rem; margin: 0; }
 .vk-filter-group { margin-top: var(--vk-space-5); }
 .vk-filter-group > legend, .vk-filter-group__label {
@@ -223,6 +224,26 @@ a { color: var(--vk-primary); }
 .vk-cat-btn .vk-count { margin-left: auto; font-size: .8rem; opacity: .7; }
 
 .vk-chip-row { display: flex; flex-wrap: wrap; gap: var(--vk-space-2); }
+
+/* Autocomplete-Combobox (ARIA-1.2-Listbox-Popup) */
+.vk-combo { position: relative; }
+.vk-combo__list {
+  list-style: none; margin: var(--vk-space-1) 0 0; padding: var(--vk-space-1);
+  position: absolute; left: 0; right: 0; z-index: 30;
+  background: var(--vk-surface); border: 1px solid var(--vk-outline-variant);
+  border-radius: var(--vk-radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,.16);
+  max-height: 280px; overflow: auto;
+}
+.vk-combo__list[hidden] { display: none; }
+.vk-option {
+  padding: var(--vk-space-2) var(--vk-space-3); border-radius: var(--vk-radius-sm);
+  cursor: pointer; min-height: 40px; display: flex; align-items: center;
+}
+.vk-option:hover { background: color-mix(in srgb, var(--vk-on-surface) 6%, transparent); }
+.vk-option.is-active,
+.vk-option[aria-selected="true"] {
+  background: var(--vk-secondary-container); color: var(--vk-on-secondary-container);
+}
 .vk-chip {
   border: 1px solid var(--vk-outline-variant); background: var(--vk-surface);
   color: inherit; border-radius: var(--vk-radius-sm); padding: var(--vk-space-2) var(--vk-space-3);
@@ -343,6 +364,7 @@ a { color: var(--vk-primary); }
   }
   .vk-filters.is-open { transform: translateX(0); }
   .vk-filters-toggle { display: inline-flex; }
+  .vk-filters__close { display: inline-flex; }
   /* Detail als Vollbild-Overlay, wenn aktiv */
   .vk-detail.is-active {
     display: block; position: fixed; inset: 0; z-index: 120;

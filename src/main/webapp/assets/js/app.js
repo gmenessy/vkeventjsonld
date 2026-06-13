@@ -121,16 +121,19 @@
 
     // Kategorien
     var catGroup = el("div", { "class": "vk-filter-group" }, [
-      el("p", { "class": "vk-filter-group__label", text: "Kategorie" })
+      el("p", { "class": "vk-filter-group__label", id: "vk-cat-label", text: "Kategorie" })
     ]);
-    catGroup.appendChild(renderCategoryTree(categories));
+    var catTree = renderCategoryTree(categories);
+    catTree.setAttribute("role", "group");
+    catTree.setAttribute("aria-labelledby", "vk-cat-label");
+    catGroup.appendChild(catTree);
     body.appendChild(catGroup);
 
     // Anwesenheitsmodus
     var modeGroup = el("div", { "class": "vk-filter-group" }, [
-      el("p", { "class": "vk-filter-group__label", text: "Format" })
+      el("p", { "class": "vk-filter-group__label", id: "vk-mode-label", text: "Format" })
     ]);
-    var chipRow = el("div", { "class": "vk-chip-row" });
+    var chipRow = el("div", { "class": "vk-chip-row", role: "group", "aria-labelledby": "vk-mode-label" });
     [["", "Alle"], ["OFFLINE", "Vor Ort"], ["ONLINE", "Online"], ["MIXED", "Hybrid"]].forEach(function (m) {
       chipRow.appendChild(el("button", {
         type: "button", "class": "vk-chip", "data-mode": m[0], "aria-pressed": state.attendanceMode === m[0] ? "true" : "false",
@@ -199,37 +202,107 @@
     });
   }
 
+  /**
+   * Autocomplete nach ARIA-1.2-Combobox-Pattern (Listbox-Popup):
+   * Pfeiltasten navigieren, Enter wählt, Escape schließt, aria-activedescendant
+   * markiert die aktive Option. Maus- und Tastaturbedienung gleichwertig.
+   */
   function renderAutocomplete(label, idBase, endpoint, currentLabel, onSelect) {
+    var listId = idBase + "-list";
     var group = el("div", { "class": "vk-filter-group" });
-    var field = el("div", { "class": "vk-field" });
+    var field = el("div", { "class": "vk-field vk-combo" });
     field.appendChild(el("label", { "for": idBase, text: label }));
     var input = el("input", { "class": "vk-input", id: idBase, type: "text",
-      autocomplete: "off", value: currentLabel || "",
-      placeholder: "Tippen zum Suchen …", role: "combobox", "aria-expanded": "false",
-      "aria-controls": idBase + "-list" });
-    var list = el("ul", { "class": "vk-cat-tree", id: idBase + "-list", role: "listbox" });
+      autocomplete: "off", value: currentLabel || "", placeholder: "Tippen zum Suchen …",
+      role: "combobox", "aria-expanded": "false", "aria-controls": listId,
+      "aria-autocomplete": "list" });
+    var list = el("ul", { "class": "vk-combo__list", id: listId, role: "listbox", hidden: "hidden" });
+
+    var items = [];        // aktuelle Vorschläge
+    var activeIndex = -1;  // aktive Option (Tastatur)
     var timer = null;
+
+    function close() {
+      list.hidden = true;
+      clear(list);
+      items = [];
+      activeIndex = -1;
+      input.setAttribute("aria-expanded", "false");
+      input.removeAttribute("aria-activedescendant");
+    }
+
+    function setActive(idx) {
+      var options = list.children;
+      for (var i = 0; i < options.length; i++) {
+        var sel = (i === idx);
+        options[i].setAttribute("aria-selected", sel ? "true" : "false");
+        options[i].classList.toggle("is-active", sel);
+      }
+      activeIndex = idx;
+      if (idx >= 0 && options[idx]) {
+        input.setAttribute("aria-activedescendant", options[idx].id);
+        options[idx].scrollIntoView({ block: "nearest" });
+      } else {
+        input.removeAttribute("aria-activedescendant");
+      }
+    }
+
+    function choose(idx) {
+      var item = items[idx];
+      if (!item) return;
+      input.value = item.name;
+      close();
+      onSelect(item);
+    }
+
+    function renderOptions(data) {
+      clear(list);
+      items = data || [];
+      if (!items.length) { close(); return; }
+      items.forEach(function (item, i) {
+        var text = item.name + (item.locality ? " · " + item.locality : "");
+        var opt = el("li", { id: listId + "-opt-" + i, role: "option",
+          "class": "vk-option", "aria-selected": "false", text: text });
+        opt.addEventListener("mousedown", function (e) { e.preventDefault(); }); // Blur verhindern
+        opt.addEventListener("click", function () { choose(i); });
+        list.appendChild(opt);
+      });
+      list.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+      setActive(-1);
+    }
+
     input.addEventListener("input", function () {
       var val = input.value.trim();
-      if (!val) { clear(list); input.setAttribute("aria-expanded", "false"); onSelect(null); return; }
+      if (!val) { close(); onSelect(null); return; }
       clearTimeout(timer);
       timer = setTimeout(function () {
-        getJson(endpoint, { q: val }).then(function (body) {
-          clear(list);
-          (body.data || []).forEach(function (item) {
-            var label2 = item.name + (item.locality ? " · " + item.locality : "");
-            list.appendChild(el("li", { "class": "vk-cat-item", role: "option" }, [
-              el("button", { type: "button", "class": "vk-cat-btn", text: label2,
-                onclick: function () {
-                  input.value = item.name; clear(list);
-                  input.setAttribute("aria-expanded", "false"); onSelect(item);
-                } })
-            ]));
-          });
-          input.setAttribute("aria-expanded", body.data && body.data.length ? "true" : "false");
-        }).catch(function () {});
+        getJson(endpoint, { q: val }).then(function (body) { renderOptions(body.data); })
+          .catch(function () { close(); });
       }, 250);
     });
+
+    input.addEventListener("keydown", function (e) {
+      var open = !list.hidden && items.length > 0;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (open) { setActive((activeIndex + 1) % items.length); }
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (open) { setActive((activeIndex - 1 + items.length) % items.length); }
+      } else if (e.key === "Enter") {
+        if (open && activeIndex >= 0) { e.preventDefault(); choose(activeIndex); }
+      } else if (e.key === "Escape") {
+        if (open) { e.stopPropagation(); close(); }
+      } else if (e.key === "Home" && open) {
+        e.preventDefault(); setActive(0);
+      } else if (e.key === "End" && open) {
+        e.preventDefault(); setActive(items.length - 1);
+      }
+    });
+
+    input.addEventListener("blur", function () { setTimeout(close, 150); });
+
     field.appendChild(input);
     field.appendChild(list);
     group.appendChild(field);
@@ -731,17 +804,15 @@
       this.focus(); // expliziter Reset -> Fokus bleibt auf dem Button
     });
 
-    // Mobiler Filter-Drawer
-    $("vk-filters-open").addEventListener("click", function () {
-      var f = $("vk-filters");
-      var open = f.classList.toggle("is-open");
-      this.setAttribute("aria-expanded", open ? "true" : "false");
-    });
+    // Mobiler Filter-Drawer (Dialog mit Fokus-Trap)
+    $("vk-filters-open").addEventListener("click", openFiltersDrawer);
+    $("vk-filters-close").addEventListener("click", closeFiltersDrawer);
 
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") {
-        $("vk-filters").classList.remove("is-open");
-        if ($("vk-detail").classList.contains("is-active") && window.innerWidth < 1200) {
+        if ($("vk-filters").classList.contains("is-open")) {
+          closeFiltersDrawer();
+        } else if ($("vk-detail").classList.contains("is-active") && window.innerWidth < 1200) {
           location.hash = listHash();
         }
       }
@@ -760,6 +831,48 @@
       runSearch();
       if (id) { openDetail(id); }
     });
+  }
+
+  // ---- Mobiler Filter-Drawer (Dialog) -------------------------------------
+  var drawerOpener = null;
+  var drawerTrap = null;
+
+  function focusable(container) {
+    return Array.prototype.slice.call(container.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter(function (n) { return n.offsetParent !== null; });
+  }
+
+  function openFiltersDrawer() {
+    var f = $("vk-filters");
+    drawerOpener = document.activeElement;
+    f.classList.add("is-open");
+    f.setAttribute("role", "dialog");
+    f.setAttribute("aria-modal", "true");
+    $("vk-filters-open").setAttribute("aria-expanded", "true");
+
+    drawerTrap = function (e) {
+      if (e.key !== "Tab") return;
+      var f2 = focusable(f);
+      if (!f2.length) return;
+      var first = f2[0], last = f2[f2.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    f.addEventListener("keydown", drawerTrap);
+    $("vk-filters-close").focus();
+  }
+
+  function closeFiltersDrawer() {
+    var f = $("vk-filters");
+    if (!f.classList.contains("is-open")) return;
+    f.classList.remove("is-open");
+    f.removeAttribute("role");
+    f.removeAttribute("aria-modal");
+    if (drawerTrap) { f.removeEventListener("keydown", drawerTrap); drawerTrap = null; }
+    $("vk-filters-open").setAttribute("aria-expanded", "false");
+    if (drawerOpener && drawerOpener.focus) { drawerOpener.focus(); }
+    drawerOpener = null;
   }
 
   // ---- Mandanten-/VK-Kontext (nur Anzeige) --------------------------------

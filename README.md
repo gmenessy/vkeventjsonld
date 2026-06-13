@@ -135,6 +135,10 @@ Einheitliches Antwortformat:
   eine Tag-Allowlist gefiltert.
 - WCAG-orientiert: Skip-Link, sichtbarer Fokus, Tastaturbedienung,
   44px-Touch-Targets, `prefers-reduced-motion`/`-transparency`/`-contrast`.
+- A11y-Härtung (Sprint 2): Ort-/Veranstalter-Autocomplete als vollwertiges
+  ARIA-1.2-Combobox (Pfeiltasten, `aria-activedescendant`, Enter/Escape, Home/End);
+  Filter als gelabelte Toggle-Gruppen (`role="group"`); mobiler Filter-Drawer als
+  Dialog (`role="dialog"`, `aria-modal`, Fokus-Trap, Fokus-Restore, Schließen-Button).
 - A11y-Härtung (Sprint 1): genau eine `h1` + saubere Überschriften-/Landmark-
   Hierarchie; **kein Fokusverlust** beim Filtern (Toggles aktualisieren in-place);
   **eine** Status-Live-Region (Trefferzahl), Kartenliste selbst nicht live, Toast
