@@ -133,8 +133,14 @@ Einheitliches Antwortformat:
   alle Skripte extern (`script-src 'self'`).
 - Frontend rendert Nutzerdaten DOM-sicher (`textContent`); Rich-Text wird gegen
   eine Tag-Allowlist gefiltert.
-- WCAG-orientiert: Skip-Link, sichtbarer Fokus, Tastaturbedienung, `aria-live`,
-  44px-Touch-Targets, `prefers-reduced-motion` und `prefers-reduced-transparency`.
+- WCAG-orientiert: Skip-Link, sichtbarer Fokus, Tastaturbedienung,
+  44px-Touch-Targets, `prefers-reduced-motion`/`-transparency`/`-contrast`.
+- A11y-Härtung (Sprint 1): genau eine `h1` + saubere Überschriften-/Landmark-
+  Hierarchie; **kein Fokusverlust** beim Filtern (Toggles aktualisieren in-place);
+  **eine** Status-Live-Region (Trefferzahl), Kartenliste selbst nicht live, Toast
+  `polite`; Fokus wandert beim Öffnen ins Detail (Überschrift) und beim Schließen
+  zurück zur Karte; `scroll-margin` gegen „Focus Not Obscured" (WCAG 2.2 / 2.4.11);
+  `aria-busy` während der Suche.
 
 ## Noch nicht umgesetzt (Spezifikation, spätere Sprints)
 

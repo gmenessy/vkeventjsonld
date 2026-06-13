@@ -20,6 +20,7 @@
   var searchController = null;     // AbortController der laufenden Suche
   var searchTimer = null;
   var internalHash = false;        // unterscheidet eigene Hash-Updates von echter Navigation
+  var lastFocusedCardId = null;    // fuer Fokus-Restore beim Schliessen der Detailansicht
 
   // ---- DOM-Helfer ---------------------------------------------------------
   function $(id) { return document.getElementById(id); }
@@ -132,8 +133,9 @@
     var chipRow = el("div", { "class": "vk-chip-row" });
     [["", "Alle"], ["OFFLINE", "Vor Ort"], ["ONLINE", "Online"], ["MIXED", "Hybrid"]].forEach(function (m) {
       chipRow.appendChild(el("button", {
-        type: "button", "class": "vk-chip", "aria-pressed": state.attendanceMode === m[0] ? "true" : "false",
-        text: m[1], onclick: function () { state.attendanceMode = m[0]; renderFilters(); resetAndSearch(); }
+        type: "button", "class": "vk-chip", "data-mode": m[0], "aria-pressed": state.attendanceMode === m[0] ? "true" : "false",
+        // In-place aktualisieren statt Re-Render -> Tastaturfokus bleibt erhalten (WCAG 2.4.3).
+        text: m[1], onclick: function () { state.attendanceMode = m[0]; updatePressedStates(); resetAndSearch(); }
       }));
     });
     modeGroup.appendChild(chipRow);
@@ -165,10 +167,15 @@
   function renderCategoryTree(cats) {
     var ul = el("ul", { "class": "vk-cat-tree" });
     cats.forEach(function (cat) {
-      var pressed = state.category === cat.id;
       var btn = el("button", {
-        type: "button", "class": "vk-cat-btn", "aria-pressed": pressed ? "true" : "false",
-        onclick: function () { state.category = pressed ? "" : cat.id; renderFilters(); resetAndSearch(); }
+        type: "button", "class": "vk-cat-btn", "data-cat": cat.id,
+        "aria-pressed": state.category === cat.id ? "true" : "false",
+        // In-place-Toggle ohne Re-Render -> Fokus bleibt auf dem Button (WCAG 2.4.3).
+        onclick: function () {
+          state.category = (state.category === cat.id) ? "" : cat.id;
+          updatePressedStates();
+          resetAndSearch();
+        }
       }, [
         el("span", { text: cat.name }),
         el("span", { "class": "vk-count", text: String(cat.eventCount) })
@@ -180,6 +187,16 @@
       ul.appendChild(li);
     });
     return ul;
+  }
+
+  /** Aktualisiert die aria-pressed-Zustaende der Filter ohne DOM-Neuaufbau. */
+  function updatePressedStates() {
+    document.querySelectorAll("#vk-filters-body [data-cat]").forEach(function (b) {
+      b.setAttribute("aria-pressed", b.getAttribute("data-cat") === state.category ? "true" : "false");
+    });
+    document.querySelectorAll("#vk-filters-body [data-mode]").forEach(function (b) {
+      b.setAttribute("aria-pressed", b.getAttribute("data-mode") === state.attendanceMode ? "true" : "false");
+    });
   }
 
   function renderAutocomplete(label, idBase, endpoint, currentLabel, onSelect) {
@@ -242,6 +259,7 @@
     if (searchController) { searchController.abort(); }
     searchController = new AbortController();
     showSkeletons();
+    $("vk-results").setAttribute("aria-busy", "true");
     $("vk-result-count").textContent = "Suche läuft …";
 
     getJson(API + "/events", searchParams(), searchController.signal)
@@ -253,10 +271,12 @@
         $("vk-result-count").textContent = total === 0
           ? "Keine Veranstaltungen gefunden"
           : total + (total === 1 ? " Veranstaltung" : " Veranstaltungen");
+        $("vk-results").setAttribute("aria-busy", "false");
       })
       .catch(function (err) {
         if (err.name === "AbortError") return; // veraltete Anfrage, ignorieren
         $("vk-result-count").textContent = "Fehler bei der Suche";
+        $("vk-results").setAttribute("aria-busy", "false");
         toast("Suche fehlgeschlagen: " + err.message);
       });
   }
@@ -307,10 +327,10 @@
     ]);
 
     return el("button", {
-      type: "button", "class": "vk-card",
+      type: "button", "class": "vk-card", "data-event-id": ev.id,
       "aria-current": currentId === ev.id ? "true" : "false",
       "aria-label": ev.title + ", " + (start ? fmtDateLong(start) : ""),
-      onclick: function () { location.hash = "#/events/" + ev.id; }
+      onclick: function () { lastFocusedCardId = ev.id; location.hash = "#/events/" + ev.id; }
     }, [dateBox, body]);
   }
 
@@ -443,15 +463,36 @@
   }
 
   function highlightActiveCard(id) {
-    var cards = document.querySelectorAll(".vk-card");
-    cards.forEach(function (c) { c.setAttribute("aria-current", "false"); });
+    document.querySelectorAll(".vk-card").forEach(function (c) {
+      c.setAttribute("aria-current", c.getAttribute("data-event-id") === id ? "true" : "false");
+    });
   }
 
   function closeDetail() {
     var panel = $("vk-detail");
+    var wasActive = panel.classList.contains("is-active");
     panel.classList.remove("is-active");
     $("vk-detail-content").hidden = true;
     $("vk-detail-placeholder").hidden = false;
+    document.querySelectorAll('.vk-card[aria-current="true"]').forEach(function (c) {
+      c.setAttribute("aria-current", "false");
+    });
+    // Fokus zur ausloesenden Karte zuruecksetzen (WCAG 2.4.3), sonst zur Ergebnisliste.
+    if (wasActive) {
+      var card = lastFocusedCardId
+        ? document.querySelector('.vk-card[data-event-id="' + cssEscape(lastFocusedCardId) + '"]')
+        : null;
+      if (card) {
+        card.focus();
+      } else {
+        $("vk-results").focus();
+      }
+      lastFocusedCardId = null;
+    }
+  }
+
+  function cssEscape(s) {
+    return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/["\\]/g, "\\$&");
   }
 
   function renderDetail(ev) {
@@ -466,7 +507,8 @@
     var start = parseDate(ev.startAt);
     var end = parseDate(ev.endAt);
 
-    content.appendChild(el("h2", { text: ev.title }));
+    var heading = el("h2", { id: "vk-detail-heading", tabindex: "-1", text: ev.title });
+    content.appendChild(heading);
 
     var st = statusLabel(ev.eventStatus);
     if (st) content.appendChild(el("p", { "class": "vk-tag vk-tag--status", text: st }));
@@ -572,7 +614,8 @@
     injectJsonLd(ev);
 
     content.scrollTop = 0;
-    content.focus && content.focus();
+    // Fokus auf die Überschrift -> Screenreader kündigt die geöffnete Veranstaltung an.
+    heading.focus();
   }
 
   function sameDay(a, b) {
@@ -680,9 +723,12 @@
     $("vk-sort").addEventListener("change", function (e) { state.sort = e.target.value; resetAndSearch(); });
 
     $("vk-filters-reset").addEventListener("click", function () {
-      state = { q: state.q, from: "", to: "", category: "", place: "", placeLabel: "",
-        organizer: "", organizerLabel: "", attendanceMode: "", free: false, sort: state.sort, page: 1 };
-      renderFilters(); resetAndSearch();
+      state = { mandant: state.mandant, vk: state.vk, q: state.q, from: "", to: "", category: "",
+        place: "", placeLabel: "", organizer: "", organizerLabel: "", attendanceMode: "",
+        free: false, sort: state.sort, page: 1 };
+      renderFilters();
+      resetAndSearch();
+      this.focus(); // expliziter Reset -> Fokus bleibt auf dem Button
     });
 
     // Mobiler Filter-Drawer
@@ -724,6 +770,7 @@
       state.vk = ctx.vk;
       if (ctx.name) {
         $("vk-vk-name").textContent = ctx.name;
+        $("vk-page-title").textContent = ctx.name;
         document.title = ctx.name;
       }
     }).catch(function () { /* Kontext nur kosmetisch */ });
