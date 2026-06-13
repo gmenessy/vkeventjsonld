@@ -5,7 +5,7 @@ import com.google.gson.JsonObject;
 import de.example.vk.util.ClobUtil;
 import de.example.vk.util.Json;
 import de.example.vk.util.SearchTextUtil;
-import de.example.vk.util.VkConfig;
+import de.example.vk.util.ConfigVk;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
@@ -113,8 +113,8 @@ public class EventRepository {
         // Mandanten-Isolation zuerst: jede Suche laeuft strikt im aktuellen (MANDANT_ID, VK_ID).
         StringBuilder where = new StringBuilder(
                 "WHERE e.MANDANT_ID = :mandant AND e.VK_ID = :vk AND e.WORKFLOW_STATUS = 'PUBLISHED'");
-        params.addValue("mandant", VkConfig.requireMandant());
-        params.addValue("vk", VkConfig.requireVkId());
+        params.addValue("mandant", ConfigVk.requireMandant());
+        params.addValue("vk", ConfigVk.requireVkId());
 
         if (req.from != null) {
             where.append(" AND e.START_AT >= :fromTs");
@@ -227,8 +227,8 @@ public class EventRepository {
         // Isolation: Detailabruf nur innerhalb des aktuellen Mandanten/VK, auch wenn
         // die (global eindeutige) PUBLIC_ID bekannt waere.
         MapSqlParameterSource p = new MapSqlParameterSource("pid", publicId)
-                .addValue("mandant", VkConfig.requireMandant())
-                .addValue("vk", VkConfig.requireVkId());
+                .addValue("mandant", ConfigVk.requireMandant())
+                .addValue("vk", ConfigVk.requireVkId());
 
         List<JsonObject> events = jdbc.query(
                 "SELECT e.*, "

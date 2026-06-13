@@ -1,7 +1,6 @@
 package de.example.vk.config;
 
 import de.example.vk.servlet.SecurityHeadersFilter;
-import de.example.vk.servlet.TenantFilter;
 import org.springframework.web.servlet.support.AbstractAnnotationConfigDispatcherServletInitializer;
 
 import javax.servlet.DispatcherType;
@@ -45,8 +44,7 @@ public class WebAppInitializer extends AbstractAnnotationConfigDispatcherServlet
         super.onStartup(servletContext);
         servletContext.addFilter("securityHeaders", new SecurityHeadersFilter())
                 .addMappingForUrlPatterns(EnumSet.allOf(DispatcherType.class), false, "/*");
-        // Mandanten-Kontext fuer alle API-Aufrufe aufloesen.
-        servletContext.addFilter("tenant", new TenantFilter())
-                .addMappingForUrlPatterns(EnumSet.allOf(DispatcherType.class), false, "/api/*");
+        // Der Mandanten-/VK-Kontext kommt aus ConfigVk (Spring-konfiguriert, ein
+        // VK je System) – kein Request-basierter Tenant-Filter noetig.
     }
 }

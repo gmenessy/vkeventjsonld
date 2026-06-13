@@ -126,9 +126,6 @@ a { color: var(--vk-primary); }
   color: var(--vk-on-primary); font-weight: 700; letter-spacing: .5px;
 }
 .vk-topbar__title { font-weight: 600; font-size: 1.05rem; white-space: nowrap; }
-.vk-topbar__vk { flex: 0 0 auto; }
-.vk-topbar__vk .vk-select { width: auto; max-width: 240px; min-height: 40px; }
-@media (max-width: 599px) { .vk-topbar__vk .vk-select { max-width: 140px; } }
 
 .vk-search {
   position: relative; display: flex; align-items: center; flex: 1 1 auto;

@@ -5,7 +5,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import de.example.vk.config.DataSourceConfig;
 import de.example.vk.dev.DevDataInitializer;
 import de.example.vk.repository.EventRepository;
-import de.example.vk.util.VkConfig;
+import de.example.vk.util.ConfigVk;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -43,19 +43,19 @@ public class EventSearchIntegrationTest {
 
     @After
     public void clearContext() {
-        VkConfig.clear();
+        ConfigVk.clear();
     }
 
     @Test
     public void datasetIsSeeded() {
-        VkConfig.set(1L, 1L);
+        ConfigVk.set(1L, 1L);
         long total = repo.count(new EventRepository.Query());
         assertTrue("VK 1 sollte viele veroeffentlichte Events haben, waren: " + total, total > 8000);
     }
 
     @Test
     public void firstPageReturnsRequestedSize() {
-        VkConfig.set(1L, 1L);
+        ConfigVk.set(1L, 1L);
         EventRepository.Query q = new EventRepository.Query();
         q.size = 20;
         assertEquals(20, repo.search(q).size());
@@ -63,7 +63,7 @@ public class EventSearchIntegrationTest {
 
     @Test
     public void fullTextSearchFindsMatches() {
-        VkConfig.set(1L, 1L);
+        ConfigVk.set(1L, 1L);
         EventRepository.Query q = new EventRepository.Query();
         q.q = "konzert";
         assertTrue("Volltextsuche 'konzert' sollte Treffer liefern", repo.count(q) > 0);
@@ -72,7 +72,7 @@ public class EventSearchIntegrationTest {
 
     @Test
     public void detailLoadsRelations() {
-        VkConfig.set(1L, 1L);
+        ConfigVk.set(1L, 1L);
         EventRepository.Query q = new EventRepository.Query();
         q.size = 1;
         JsonObject first = repo.search(q).get(0).getAsJsonObject();
@@ -86,30 +86,30 @@ public class EventSearchIntegrationTest {
     /** Kernanforderung Multi-Tenant: VKs sehen sich gegenseitig nicht. */
     @Test
     public void tenantsAreIsolated() {
-        VkConfig.set(1L, 1L);
+        ConfigVk.set(1L, 1L);
         long vk1 = repo.count(new EventRepository.Query());
 
-        VkConfig.set(2L, 3L);
+        ConfigVk.set(2L, 3L);
         long vk3 = repo.count(new EventRepository.Query());
 
         assertTrue("VK 1 (12000) sollte deutlich mehr Events haben als VK 3 (1500)", vk1 > vk3);
         assertTrue("VK 3 sollte > 0 Events haben", vk3 > 0);
 
         // Ein Event aus VK 1 darf unter VK 3 NICHT auffindbar sein.
-        VkConfig.set(1L, 1L);
+        ConfigVk.set(1L, 1L);
         EventRepository.Query q = new EventRepository.Query();
         q.size = 1;
         String vk1EventId = repo.search(q).get(0).getAsJsonObject().get("id").getAsString();
         assertNotNull(repo.findPublishedByPublicId(vk1EventId));
 
-        VkConfig.set(2L, 3L);
+        ConfigVk.set(2L, 3L);
         assertNull("Event aus VK 1 darf unter VK 3 nicht sichtbar sein",
                 repo.findPublishedByPublicId(vk1EventId));
     }
 
     @Test
     public void searchFailsClosedWithoutTenantContext() {
-        VkConfig.clear();
+        ConfigVk.clear();
         try {
             repo.count(new EventRepository.Query());
             org.junit.Assert.fail("Ohne Mandanten-Kontext darf keine Suche laufen");
@@ -120,7 +120,7 @@ public class EventSearchIntegrationTest {
 
     @Test
     public void searchIsFastOnLargeDataset() {
-        VkConfig.set(1L, 1L);
+        ConfigVk.set(1L, 1L);
         EventRepository.Query warm = new EventRepository.Query();
         warm.q = "musik";
         repo.count(warm);

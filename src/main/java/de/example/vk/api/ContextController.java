@@ -3,14 +3,15 @@ package de.example.vk.api;
 import com.google.gson.JsonObject;
 import de.example.vk.repository.VkRegistryRepository;
 import de.example.vk.util.Json;
-import de.example.vk.util.VkConfig;
+import de.example.vk.util.ConfigVk;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Liefert den aktuellen Mandanten-/VK-Kontext und die waehlbaren VKs des
- * Mandanten. Die SPA laedt das beim Start und zeigt ggf. einen VK-Umschalter.
+ * Liefert den Mandanten-/VK-Kontext, den dieses System bedient. Jedes System hat
+ * seinen eigenen Spring-Kontext und damit genau ein (MANDANT_ID, VK_ID); die SPA
+ * zeigt nur den Namen dieses VK an (kein In-App-Umschalter).
  */
 @RestController
 @RequestMapping("/context")
@@ -25,9 +26,9 @@ public class ContextController {
     @GetMapping
     public JsonObject context() {
         JsonObject data = new JsonObject();
-        data.addProperty("mandant", VkConfig.requireMandant());
-        data.addProperty("vk", VkConfig.requireVkId());
-        data.add("vks", registryRepository.listForCurrentMandant());
+        data.addProperty("mandant", ConfigVk.requireMandant());
+        data.addProperty("vk", ConfigVk.requireVkId());
+        Json.str(data, "name", registryRepository.currentName());
         return Json.ok(data);
     }
 }

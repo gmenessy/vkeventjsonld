@@ -4,7 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import de.example.vk.util.Json;
 import de.example.vk.util.SearchTextUtil;
-import de.example.vk.util.VkConfig;
+import de.example.vk.util.ConfigVk;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -22,8 +22,8 @@ public class PlaceRepository {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("q", "%" + SearchTextUtil.normalizeTerm(q) + "%")
                 .addValue("lim", limit)
-                .addValue("mandant", VkConfig.requireMandant())
-                .addValue("vk", VkConfig.requireVkId());
+                .addValue("mandant", ConfigVk.requireMandant())
+                .addValue("vk", ConfigVk.requireVkId());
         final JsonArray result = new JsonArray();
         jdbc.query(
                 "SELECT p.PUBLIC_ID, p.NAME, a.LOCALITY "

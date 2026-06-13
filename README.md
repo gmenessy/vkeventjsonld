@@ -51,21 +51,27 @@ Messung (Integrationstest, H2, ~12.000 Events): Ø **~58 ms** pro
 Mehrere Mandanten, je Mandant mehrere Veranstaltungskalender (VK); jeder VK hält
 typisch 1.000–20.000 Events. Mandant und VK sind **strikt isoliert**.
 
-- Tenant-Kontext: `de.example.vk.util.VkConfig` mit statischen `getMandant()` /
-  `getVkId()` (beide `Long`), als ThreadLocal pro Request gesetzt.
-- `TenantFilter` löst den Kontext pro Request auf (Header `X-Mandant-Id`/`X-Vk-Id`
-  oder Parameter `mandant`/`vk`, Dev-Default 1/1). **Produktion:** an Host/
-  Subdomain oder den authentifizierten Benutzer binden, nicht an freie Parameter.
+- **Ein System = ein (Mandant, VK).** Jedes System bringt seinen eigenen
+  Spring-Kontext mit; der Tenant ist für die Laufzeit fix, nicht pro Request.
+- Tenant-Kontext: `de.example.vk.util.ConfigVk` mit statischen `getMandant()` /
+  `getVkId()` (beide `Long`). Gesetzt wird er beim Start durch
+  `ConfigVkInitializer` aus der Spring-Konfiguration (`vk.mandantId` / `vk.vkId`
+  bzw. `VK_MANDANT_ID` / `VK_VK_ID`, Default 1/1).
 - **Jede** Abfrage filtert auf `MANDANT_ID` + `VK_ID`; ohne Kontext bricht sie ab
   (fail-closed). Der Treiberindex führt mit `(MANDANT_ID, VK_ID, …)`, sodass jeder
   VK ein zusammenhängender Indexbereich ist – Isolation und Tempo zugleich.
+- Die Tenant-Bestimmung ist **serverseitig**; die SPA sendet keine Tenant-Daten
+  und kann den Mandanten nicht beeinflussen. `mandant`/`vk` als Request-Parameter
+  werden ignoriert.
 - Datenzuordnung: Events, Orte und Veranstalter gehören zu einem VK; die
   Kategorie-Taxonomie und Keywords sind global, die Event-Zählung ist gescoped.
-- `GET /api/context` liefert aktuellen Mandanten/VK + wählbare VKs; die SPA zeigt
-  bei mehreren VKs einen Umschalter und sendet `mandant`/`vk` bei jeder Anfrage.
+- `GET /api/context` liefert Mandant/VK + Anzeigename des Systems; die SPA zeigt
+  diesen Namen in der Kopfzeile.
 
 Der Isolationstest (`EventSearchIntegrationTest`) belegt: ein Event aus VK 1 ist
-unter VK 3 nicht abrufbar, und ohne Kontext schlägt jede Suche fehl.
+unter VK 3 nicht abrufbar, und ohne Kontext schlägt jede Suche fehl. Live
+verifiziert: dasselbe WAR liefert mit `-Dvk.mandantId=2 -Dvk.vkId=3` einen
+anderen, isolierten Kalender.
 
 ## Bauen, Testen, Starten
 
@@ -92,6 +98,8 @@ Demo-Datensatz beim Start automatisch an.
 | `VK_DB_MODE` | `h2` | `h2` (Dev/Demo, eingebettet) oder `oracle` |
 | `VK_DB_URL` | – | JDBC-URL der Oracle-DB (bei `oracle`) |
 | `VK_DB_USER` / `VK_DB_PASSWORD` | – | Oracle-Zugangsdaten |
+| `VK_MANDANT_ID` | `1` | Mandant dieses Systems (`vk.mandantId`) |
+| `VK_VK_ID` | `1` | VK dieses Systems (`vk.vkId`) |
 | `VK_BASE_URL` | leer | Basis-URL für JSON-LD `@id`/`url` |
 | `VK_SEARCH_ORACLE_TEXT` | `false` | Oracle-Text-Volltextsuche aktivieren |
 
@@ -107,8 +115,8 @@ Demo-Datensatz beim Start automatisch an.
 | GET | `/api/organizers?q=` | Veranstalter-Autocomplete |
 | GET | `/api/context` | Aktueller Mandant/VK + wählbare VKs |
 
-Alle Endpunkte sind mandantengescoped; der Kontext kommt aus Header
-`X-Mandant-Id`/`X-Vk-Id` oder den Parametern `mandant`/`vk`.
+Alle Endpunkte sind mandantengescoped; der Kontext kommt aus `ConfigVk`
+(serverseitig, je System konfiguriert), nicht aus dem Request.
 
 Einheitliches Antwortformat:
 `{ "success": true, "data": …, "messages": [], "errors": [], "meta": { page, size, total } }`

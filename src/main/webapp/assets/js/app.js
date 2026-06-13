@@ -55,9 +55,7 @@
         }
       });
     }
-    // Mandanten-Kontext bei jeder API-Anfrage mitschicken (Tenant-Isolation).
-    if (state.mandant != null) { url.searchParams.set("mandant", state.mandant); }
-    if (state.vk != null) { url.searchParams.set("vk", state.vk); }
+    // Kein Tenant-Parameter: Mandant/VK bestimmt das System serverseitig (ConfigVk).
     return url.toString();
   }
 
@@ -708,11 +706,7 @@
       handleRoute();
     });
 
-    $("vk-switcher-select").addEventListener("change", function (e) {
-      switchVk(e.target.value);
-    });
-
-    // Bootstrap: erst Mandanten-/VK-Kontext, dann Kategorien, dann Filter aus URL + Suche.
+    // Bootstrap: erst VK-Kontext (nur Anzeige), dann Kategorien, dann Filter aus URL + Suche.
     loadContext().then(loadCategories).then(function () {
       applyHashToState();
       syncFilterInputs();
@@ -722,39 +716,17 @@
     });
   }
 
-  // ---- Multi-Tenant-Kontext -----------------------------------------------
+  // ---- Mandanten-/VK-Kontext (nur Anzeige) --------------------------------
   function loadContext() {
     return getJson(API + "/context").then(function (body) {
       var ctx = body.data || {};
       state.mandant = ctx.mandant;
       state.vk = ctx.vk;
-      renderSwitcher(ctx);
-    }).catch(function () { /* Default-Kontext bleibt aktiv */ });
-  }
-
-  function renderSwitcher(ctx) {
-    var vks = ctx.vks || [];
-    var current = vks.filter(function (v) { return v.current; })[0];
-    if (current) { $("vk-vk-name").textContent = current.name; }
-    var wrap = $("vk-switcher");
-    var sel = $("vk-switcher-select");
-    clear(sel);
-    if (vks.length < 2) { wrap.hidden = true; return; }
-    vks.forEach(function (v) {
-      var opt = el("option", { value: String(v.vkId), text: v.name });
-      if (v.current) { opt.selected = true; }
-      sel.appendChild(opt);
-    });
-    wrap.hidden = false;
-  }
-
-  function switchVk(vkId) {
-    state.vk = Number(vkId);
-    // Filter zuruecksetzen, Kategorien des neuen VK laden, neu suchen.
-    state.category = ""; state.place = ""; state.placeLabel = "";
-    state.organizer = ""; state.organizerLabel = ""; state.page = 1;
-    if (location.hash.indexOf("#/events/") === 0) { location.hash = "#/events"; }
-    loadContext().then(loadCategories).then(function () { runSearch(); });
+      if (ctx.name) {
+        $("vk-vk-name").textContent = ctx.name;
+        document.title = ctx.name;
+      }
+    }).catch(function () { /* Kontext nur kosmetisch */ });
   }
 
   function loadCategories() {

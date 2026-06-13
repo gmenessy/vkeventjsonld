@@ -3,7 +3,7 @@ package de.example.vk.repository;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import de.example.vk.util.Json;
-import de.example.vk.util.VkConfig;
+import de.example.vk.util.ConfigVk;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -31,8 +31,8 @@ public class CategoryRepository {
 
         // Kategorie-Taxonomie ist global; die Event-Zaehlung ist mandantengescoped.
         MapSqlParameterSource tenant = new MapSqlParameterSource()
-                .addValue("mandant", VkConfig.requireMandant())
-                .addValue("vk", VkConfig.requireVkId());
+                .addValue("mandant", ConfigVk.requireMandant())
+                .addValue("vk", ConfigVk.requireVkId());
         jdbc.query("SELECT c.ID, c.PARENT_ID, c.NAME, c.SLUG, c.ICON, "
                  + "       (SELECT COUNT(*) FROM VK_EVENT_CATEGORY ec "
                  + "          JOIN VK_EVENT e ON e.ID = ec.EVENT_ID "
