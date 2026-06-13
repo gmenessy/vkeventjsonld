@@ -3,6 +3,7 @@ package de.example.vk.repository;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import de.example.vk.util.Json;
+import de.example.vk.util.VkConfig;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -28,14 +29,19 @@ public class CategoryRepository {
         final Map<Long, Long> parentOf = new HashMap<Long, Long>();
         final List<Long> order = new ArrayList<Long>();
 
+        // Kategorie-Taxonomie ist global; die Event-Zaehlung ist mandantengescoped.
+        MapSqlParameterSource tenant = new MapSqlParameterSource()
+                .addValue("mandant", VkConfig.requireMandant())
+                .addValue("vk", VkConfig.requireVkId());
         jdbc.query("SELECT c.ID, c.PARENT_ID, c.NAME, c.SLUG, c.ICON, "
                  + "       (SELECT COUNT(*) FROM VK_EVENT_CATEGORY ec "
                  + "          JOIN VK_EVENT e ON e.ID = ec.EVENT_ID "
                  + "         WHERE ec.CATEGORY_ID = c.ID "
+                 + "           AND e.MANDANT_ID = :mandant AND e.VK_ID = :vk "
                  + "           AND e.WORKFLOW_STATUS = 'PUBLISHED') AS EVENT_COUNT "
                  + "FROM VK_CATEGORY c WHERE c.ACTIVE = 'Y' "
                  + "ORDER BY c.SORT_ORDER, c.NAME",
-                new MapSqlParameterSource(),
+                tenant,
                 rs -> {
                     long id = rs.getLong("ID");
                     JsonObject node = new JsonObject();

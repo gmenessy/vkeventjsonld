@@ -46,6 +46,27 @@ Das war die zentrale Anforderung. Maßnahmen:
 Messung (Integrationstest, H2, ~12.000 Events): Ø **~58 ms** pro
 `count + Seite` – deutlich unter dem Spezifikationsziel von 500 ms.
 
+## Mandantenfähigkeit (Multi-Tenant)
+
+Mehrere Mandanten, je Mandant mehrere Veranstaltungskalender (VK); jeder VK hält
+typisch 1.000–20.000 Events. Mandant und VK sind **strikt isoliert**.
+
+- Tenant-Kontext: `de.example.vk.util.VkConfig` mit statischen `getMandant()` /
+  `getVkId()` (beide `Long`), als ThreadLocal pro Request gesetzt.
+- `TenantFilter` löst den Kontext pro Request auf (Header `X-Mandant-Id`/`X-Vk-Id`
+  oder Parameter `mandant`/`vk`, Dev-Default 1/1). **Produktion:** an Host/
+  Subdomain oder den authentifizierten Benutzer binden, nicht an freie Parameter.
+- **Jede** Abfrage filtert auf `MANDANT_ID` + `VK_ID`; ohne Kontext bricht sie ab
+  (fail-closed). Der Treiberindex führt mit `(MANDANT_ID, VK_ID, …)`, sodass jeder
+  VK ein zusammenhängender Indexbereich ist – Isolation und Tempo zugleich.
+- Datenzuordnung: Events, Orte und Veranstalter gehören zu einem VK; die
+  Kategorie-Taxonomie und Keywords sind global, die Event-Zählung ist gescoped.
+- `GET /api/context` liefert aktuellen Mandanten/VK + wählbare VKs; die SPA zeigt
+  bei mehreren VKs einen Umschalter und sendet `mandant`/`vk` bei jeder Anfrage.
+
+Der Isolationstest (`EventSearchIntegrationTest`) belegt: ein Event aus VK 1 ist
+unter VK 3 nicht abrufbar, und ohne Kontext schlägt jede Suche fehl.
+
 ## Bauen, Testen, Starten
 
 Voraussetzung: Java 8+ (gebaut mit `release 8`), Maven.
@@ -84,6 +105,10 @@ Demo-Datensatz beim Start automatisch an.
 | GET | `/api/categories` | Kategoriebaum inkl. Event-Zähler |
 | GET | `/api/places?q=` | Ort-Autocomplete |
 | GET | `/api/organizers?q=` | Veranstalter-Autocomplete |
+| GET | `/api/context` | Aktueller Mandant/VK + wählbare VKs |
+
+Alle Endpunkte sind mandantengescoped; der Kontext kommt aus Header
+`X-Mandant-Id`/`X-Vk-Id` oder den Parametern `mandant`/`vk`.
 
 Einheitliches Antwortformat:
 `{ "success": true, "data": …, "messages": [], "errors": [], "meta": { page, size, total } }`

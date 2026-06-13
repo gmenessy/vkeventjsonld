@@ -3,10 +3,10 @@ package de.example.vk.dev;
 import de.example.vk.util.SearchTextUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.beans.factory.InitializingBean;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.stereotype.Component;
 
@@ -17,20 +17,35 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Random;
 import java.util.UUID;
 
 /**
- * Dev-/Demo-Modus (VK_DB_MODE=h2): legt das Schema an und befuellt die Datenbank
- * mit ca. 12.000 veroeffentlichten Events, damit Suchverhalten und Performance
- * realistisch geprueft werden koennen. In Produktion (oracle) inaktiv.
+ * Dev-/Demo-Modus (VK_DB_MODE=h2): legt das Schema an und befuellt es mit
+ * mehreren Mandanten und je mehreren Veranstaltungskalendern (VK), damit
+ * Mandanten-Isolation und Suchperformance realistisch geprueft werden koennen.
+ * In Produktion (oracle) inaktiv.
+ *
+ * <p>Kategorie-Taxonomie und Keywords sind global; Orte, Veranstalter und Events
+ * gehoeren jeweils zu genau einem (MANDANT_ID, VK_ID).</p>
  */
 @Component
 public class DevDataInitializer implements InitializingBean {
 
     private static final Logger LOG = LoggerFactory.getLogger(DevDataInitializer.class);
 
-    private static final int EVENT_COUNT = 12000;
+    /** Demo-Tenants: mandant, vk, Name, Anzahl Events (im Bereich 1.000–20.000). */
+    private static final long[][] TENANTS = {
+            {1, 1, 12000},
+            {1, 2, 2000},
+            {2, 3, 1500},
+    };
+    private static final String[] TENANT_NAMES = {
+            "Stadt Freiburg – Kulturkalender",
+            "Stadt Freiburg – Sportkalender",
+            "Landkreis Emmendingen – Veranstaltungen",
+    };
 
     private final DataSource dataSource;
     private final String mode;
@@ -56,15 +71,14 @@ public class DevDataInitializer implements InitializingBean {
         try (Connection con = dataSource.getConnection()) {
             ScriptUtils.executeSqlScript(con, new ClassPathResource("db/h2/schema.sql"));
         }
-        seed(jdbc);
-        LOG.info("Dev-Datenbank mit {} Events angelegt in {} ms",
-                EVENT_COUNT, System.currentTimeMillis() - start);
+        long total = seed(jdbc);
+        LOG.info("Dev-Datenbank mit {} Events ueber {} VKs angelegt in {} ms",
+                total, TENANTS.length, System.currentTimeMillis() - start);
     }
 
     // ------------------------------------------------------------------
 
     private static final String[][] CATEGORIES = {
-            // slug, name, parentSlug, schemaType
             {"kultur", "Kultur", null, "Event"},
             {"musik", "Musik", "kultur", "MusicEvent"},
             {"theater", "Theater", "kultur", "TheaterEvent"},
@@ -84,13 +98,11 @@ public class DevDataInitializer implements InitializingBean {
             "Freiburg im Breisgau", "Emmendingen", "Offenburg", "Lörrach",
             "Waldkirch", "Titisee-Neustadt", "Müllheim", "Breisach am Rhein"
     };
-
     private static final String[] PLACE_NAMES = {
             "Stadtpark", "Stadthalle", "Bürgerhaus", "Kulturzentrum", "Theater am Markt",
             "Musikschule", "Sportzentrum", "Stadtbibliothek", "Museum", "Marktplatz",
             "Jugendzentrum", "Gemeindesaal"
     };
-
     private static final String[] TITLE_LEAD = {
             "Sommerkonzert", "Wochenmarkt", "Theateraufführung", "Lesung", "Stadtlauf",
             "Familienfest", "Workshop Fotografie", "Yoga im Park", "Jazzabend", "Orgelkonzert",
@@ -99,19 +111,16 @@ public class DevDataInitializer implements InitializingBean {
             "Programmierkurs", "Töpferkurs", "Radtour", "Fußballturnier", "Hallenkonzert",
             "Poetry Slam", "Weinprobe", "Adventsmarkt", "Osterbasteln", "Sommerfest"
     };
-
     private static final String[] TITLE_TAIL = {
             "für die ganze Familie", "mit regionalen Künstlern", "unter freiem Himmel",
             "für Einsteiger", "für Fortgeschrittene", "mit Live-Musik", "im historischen Zentrum",
             "zum Mitmachen", "bei freiem Eintritt", "mit Anmeldung", "der Jugendabteilung",
             "des Fördervereins", "zum Saisonauftakt", "zum Jahresausklang", ""
     };
-
     private static final String[] ORG_NAMES = {
             "Kulturverein", "Musikverein", "Sportverein", "Förderverein", "Bürgerinitiative",
             "Volkshochschule", "Stadtjugendring", "Naturfreunde", "Kunstverein", "Heimatverein"
     };
-
     private static final String[] KEYWORDS = {
             "Open Air", "Familie", "Musik", "Kostenlos", "Barrierefrei", "Draußen",
             "Kinder", "Senioren", "Jugend", "Regional", "Kreativ", "Gesundheit",
@@ -119,39 +128,31 @@ public class DevDataInitializer implements InitializingBean {
             "Markt", "Bildung", "Sport", "Kultur", "Tanz", "Literatur"
     };
 
-    private void seed(JdbcTemplate jdbc) {
+    /** Globale ID-Zaehler ueber alle Tenants (IDs sind generated-by-default). */
+    private static final class Ids {
+        long address = 0, place = 0, party = 0, vloc = 0, event = 0, offer = 0;
+    }
+
+    private long seed(JdbcTemplate jdbc) {
         Random rnd = new Random(20260612L);
+        Ids ids = new Ids();
 
-        // Adressen + Orte
-        int placeCount = CITIES.length * PLACE_NAMES.length / 2;
-        List<Object[]> addresses = new ArrayList<Object[]>();
-        List<Object[]> places = new ArrayList<Object[]>();
-        String[] placeNames = new String[placeCount];
-        String[] placeCities = new String[placeCount];
-        for (int i = 0; i < placeCount; i++) {
-            String city = CITIES[i % CITIES.length];
-            String name = PLACE_NAMES[(i / CITIES.length) % PLACE_NAMES.length] + " " + city.split(" ")[0];
-            placeNames[i] = name;
-            placeCities[i] = city;
-            long id = i + 1;
-            addresses.add(new Object[]{id, "Beispielstraße " + (1 + rnd.nextInt(90)),
-                    String.valueOf(79000 + rnd.nextInt(999)), city, "Baden-Württemberg", "DE"});
-            String note = rnd.nextInt(3) > 0
-                    ? "Barrierefreier Zugang über den Haupteingang." : null;
-            places.add(new Object[]{id, uuid(rnd), name, id,
-                    47.5 + rnd.nextDouble(), 7.5 + rnd.nextDouble(), note});
+        seedGlobalCategories(jdbc);
+        seedGlobalKeywords(jdbc);
+        seedRegistry(jdbc);
+
+        long totalEvents = 0;
+        for (int t = 0; t < TENANTS.length; t++) {
+            long mandant = TENANTS[t][0];
+            long vk = TENANTS[t][1];
+            int eventCount = (int) TENANTS[t][2];
+            seedTenant(jdbc, rnd, ids, mandant, vk, eventCount);
+            totalEvents += eventCount;
         }
-        jdbc.batchUpdate("INSERT INTO VK_ADDRESS (ID, STREET_ADDRESS, POSTAL_CODE, LOCALITY, REGION, COUNTRY_CODE) VALUES (?,?,?,?,?,?)", addresses);
-        jdbc.batchUpdate("INSERT INTO VK_PLACE (ID, PUBLIC_ID, NAME, ADDRESS_ID, LATITUDE, LONGITUDE, ACCESSIBILITY_NOTE) VALUES (?,?,?,?,?,?,?)", places);
+        return totalEvents;
+    }
 
-        // Virtuelle Orte
-        List<Object[]> vlocs = new ArrayList<Object[]>();
-        for (int i = 1; i <= 10; i++) {
-            vlocs.add(new Object[]{i, "Online-Raum " + i, "https://meet.example.org/raum-" + i, "BigBlueButton"});
-        }
-        jdbc.batchUpdate("INSERT INTO VK_VIRTUAL_LOCATION (ID, NAME, URL, PLATFORM) VALUES (?,?,?,?)", vlocs);
-
-        // Kategorien
+    private void seedGlobalCategories(JdbcTemplate jdbc) {
         List<Object[]> cats = new ArrayList<Object[]>();
         for (int i = 0; i < CATEGORIES.length; i++) {
             String[] c = CATEGORIES[i];
@@ -166,41 +167,97 @@ public class DevDataInitializer implements InitializingBean {
             cats.add(new Object[]{i + 1, parentId, c[1], c[0], c[3], i});
         }
         jdbc.batchUpdate("INSERT INTO VK_CATEGORY (ID, PARENT_ID, NAME, SLUG, SCHEMA_TYPE, SORT_ORDER) VALUES (?,?,?,?,?,?)", cats);
+    }
 
-        // Veranstalter (Organisationen) + Personen (Performer)
-        List<Object[]> parties = new ArrayList<Object[]>();
-        int orgCount = ORG_NAMES.length * 4;
-        for (int i = 0; i < orgCount; i++) {
-            String name = ORG_NAMES[i % ORG_NAMES.length] + " " + CITIES[i % CITIES.length].split(" ")[0] + " e.V.";
-            parties.add(new Object[]{i + 1, uuid(rnd), "ORGANIZATION", name,
-                    "info" + (i + 1) + "@example.org", "https://verein" + (i + 1) + ".example.org"});
-        }
-        int personCount = 20;
-        for (int i = 0; i < personCount; i++) {
-            parties.add(new Object[]{orgCount + i + 1, uuid(rnd), "PERSON",
-                    "Ensemble " + (char) ('A' + i % 26) + (i + 1), null, null});
-        }
-        jdbc.batchUpdate("INSERT INTO VK_PARTY (ID, PUBLIC_ID, PARTY_TYPE, DISPLAY_NAME, EMAIL, URL) VALUES (?,?,?,?,?,?)", parties);
-
-        // Keywords
+    private void seedGlobalKeywords(JdbcTemplate jdbc) {
         List<Object[]> keywords = new ArrayList<Object[]>();
         for (int i = 0; i < KEYWORDS.length; i++) {
             keywords.add(new Object[]{i + 1, KEYWORDS[i],
-                    KEYWORDS[i].toLowerCase(java.util.Locale.GERMAN).replace(' ', '-').replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")});
+                    KEYWORDS[i].toLowerCase(Locale.GERMAN).replace(' ', '-')
+                            .replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")});
         }
         jdbc.batchUpdate("INSERT INTO VK_KEYWORD (ID, NAME, SLUG) VALUES (?,?,?)", keywords);
+    }
 
-        // Events
+    private void seedRegistry(JdbcTemplate jdbc) {
+        List<Object[]> regs = new ArrayList<Object[]>();
+        for (int t = 0; t < TENANTS.length; t++) {
+            regs.add(new Object[]{TENANTS[t][0], TENANTS[t][1], TENANT_NAMES[t], "vk" + TENANTS[t][1]});
+        }
+        jdbc.batchUpdate("INSERT INTO VK_REGISTRY (MANDANT_ID, VK_ID, NAME, SLUG) VALUES (?,?,?,?)", regs);
+    }
+
+    private void seedTenant(JdbcTemplate jdbc, Random rnd, Ids ids, long mandant, long vk, int eventCount) {
+        // Orte + Adressen (pro VK)
+        int placeCount = 24;
+        long[] placeIds = new long[placeCount];
+        String[] placeNames = new String[placeCount];
+        String[] placeCities = new String[placeCount];
+        List<Object[]> addresses = new ArrayList<Object[]>();
+        List<Object[]> places = new ArrayList<Object[]>();
+        for (int i = 0; i < placeCount; i++) {
+            String city = CITIES[i % CITIES.length];
+            String name = PLACE_NAMES[(i / CITIES.length) % PLACE_NAMES.length] + " " + city.split(" ")[0];
+            long addrId = ++ids.address;
+            long placeId = ++ids.place;
+            placeIds[i] = placeId;
+            placeNames[i] = name;
+            placeCities[i] = city;
+            addresses.add(new Object[]{addrId, "Beispielstraße " + (1 + rnd.nextInt(90)),
+                    String.valueOf(79000 + rnd.nextInt(999)), city, "Baden-Württemberg", "DE"});
+            String note = rnd.nextInt(3) > 0 ? "Barrierefreier Zugang über den Haupteingang." : null;
+            places.add(new Object[]{placeId, uuid(rnd), mandant, vk, name, addrId,
+                    47.5 + rnd.nextDouble(), 7.5 + rnd.nextDouble(), note});
+        }
+        jdbc.batchUpdate("INSERT INTO VK_ADDRESS (ID, STREET_ADDRESS, POSTAL_CODE, LOCALITY, REGION, COUNTRY_CODE) VALUES (?,?,?,?,?,?)", addresses);
+        jdbc.batchUpdate("INSERT INTO VK_PLACE (ID, PUBLIC_ID, MANDANT_ID, VK_ID, NAME, ADDRESS_ID, LATITUDE, LONGITUDE, ACCESSIBILITY_NOTE) VALUES (?,?,?,?,?,?,?,?,?)", places);
+
+        // Virtuelle Orte (pro VK)
+        int vlocCount = 10;
+        long[] vlocIds = new long[vlocCount];
+        List<Object[]> vlocs = new ArrayList<Object[]>();
+        for (int i = 0; i < vlocCount; i++) {
+            long id = ++ids.vloc;
+            vlocIds[i] = id;
+            vlocs.add(new Object[]{id, "Online-Raum " + id, "https://meet.example.org/raum-" + id, "BigBlueButton"});
+        }
+        jdbc.batchUpdate("INSERT INTO VK_VIRTUAL_LOCATION (ID, NAME, URL, PLATFORM) VALUES (?,?,?,?)", vlocs);
+
+        // Veranstalter + Performer (pro VK)
+        int orgCount = 20;
+        int personCount = 10;
+        long[] orgIds = new long[orgCount];
+        String[] orgNames = new String[orgCount];
+        long[] personIds = new long[personCount];
+        List<Object[]> parties = new ArrayList<Object[]>();
+        for (int i = 0; i < orgCount; i++) {
+            long id = ++ids.party;
+            orgIds[i] = id;
+            String name = ORG_NAMES[i % ORG_NAMES.length] + " " + CITIES[i % CITIES.length].split(" ")[0]
+                    + " (VK" + vk + ") e.V.";
+            orgNames[i] = name;
+            parties.add(new Object[]{id, uuid(rnd), mandant, vk, "ORGANIZATION", name,
+                    "info" + id + "@example.org", "https://verein" + id + ".example.org"});
+        }
+        for (int i = 0; i < personCount; i++) {
+            long id = ++ids.party;
+            personIds[i] = id;
+            parties.add(new Object[]{id, uuid(rnd), mandant, vk, "PERSON",
+                    "Ensemble " + (char) ('A' + i % 26) + id, null, null});
+        }
+        jdbc.batchUpdate("INSERT INTO VK_PARTY (ID, PUBLIC_ID, MANDANT_ID, VK_ID, PARTY_TYPE, DISPLAY_NAME, EMAIL, URL) VALUES (?,?,?,?,?,?,?,?)", parties);
+
+        // Events (pro VK)
         LocalDate today = LocalDate.now();
-        List<Object[]> events = new ArrayList<Object[]>(EVENT_COUNT);
+        List<Object[]> events = new ArrayList<Object[]>();
         List<Object[]> eventCats = new ArrayList<Object[]>();
         List<Object[]> eventKeywords = new ArrayList<Object[]>();
         List<Object[]> eventRoles = new ArrayList<Object[]>();
         List<Object[]> offers = new ArrayList<Object[]>();
-        long offerId = 1;
 
-        for (int i = 1; i <= EVENT_COUNT; i++) {
-            int catIdx = 1 + rnd.nextInt(CATEGORIES.length - 1); // bevorzugt Unterkategorien
+        for (int n = 0; n < eventCount; n++) {
+            long eventId = ++ids.event;
+            int catIdx = 1 + rnd.nextInt(CATEGORIES.length - 1);
             String[] cat = CATEGORIES[catIdx];
             String lead = TITLE_LEAD[rnd.nextInt(TITLE_LEAD.length)];
             String tail = TITLE_TAIL[rnd.nextInt(TITLE_TAIL.length)];
@@ -215,18 +272,18 @@ public class DevDataInitializer implements InitializingBean {
 
             int modeRoll = rnd.nextInt(100);
             String attendanceMode = modeRoll < 75 ? "OFFLINE" : (modeRoll < 90 ? "ONLINE" : "MIXED");
-            Long placeId = "ONLINE".equals(attendanceMode) ? null : (long) (placeIdx + 1);
-            Long vlocId = "OFFLINE".equals(attendanceMode) ? null : (long) (1 + rnd.nextInt(10));
+            Long placeId = "ONLINE".equals(attendanceMode) ? null : placeIds[placeIdx];
+            Long vlocId = "OFFLINE".equals(attendanceMode) ? null : vlocIds[rnd.nextInt(vlocCount)];
 
             boolean free = rnd.nextInt(100) < 30;
             int statusRoll = rnd.nextInt(100);
             String eventStatus = statusRoll < 94 ? "EventScheduled"
                     : (statusRoll < 97 ? "EventCancelled" : "EventRescheduled");
-            // ~92% veroeffentlicht, Rest im Redaktionsprozess
             String workflowStatus = rnd.nextInt(100) < 92 ? "PUBLISHED" : "SUBMITTED";
 
-            long organizerId = 1 + rnd.nextInt(orgCount);
-            String organizerName = (String) parties.get((int) organizerId - 1)[3];
+            int orgIdx = rnd.nextInt(orgCount);
+            long organizerId = orgIds[orgIdx];
+            String organizerName = orgNames[orgIdx];
 
             int kw1 = 1 + rnd.nextInt(KEYWORDS.length);
             int kw2 = 1 + rnd.nextInt(KEYWORDS.length);
@@ -239,28 +296,28 @@ public class DevDataInitializer implements InitializingBean {
             String description = "<p>" + shortDesc + "</p><p>Weitere Informationen erhalten Sie beim Veranstalter <strong>"
                     + organizerName + "</strong>. Änderungen vorbehalten.</p>";
 
-            events.add(new Object[]{i, uuid(rnd), cat[3], title, shortDesc, description,
+            events.add(new Object[]{eventId, uuid(rnd), mandant, vk, cat[3], title, shortDesc, description,
                     Timestamp.valueOf(startAt), Timestamp.valueOf(endAt),
                     attendanceMode, eventStatus, workflowStatus,
                     free ? "Y" : "N", placeId, vlocId, searchText,
                     Timestamp.valueOf(startAt.minusDays(30))});
 
-            eventCats.add(new Object[]{i, catIdx + 1, "Y"});
-            eventRoles.add(new Object[]{i, organizerId, "ORGANIZER", 0});
+            eventCats.add(new Object[]{eventId, catIdx + 1, "Y"});
+            eventRoles.add(new Object[]{eventId, organizerId, "ORGANIZER", 0});
             if (rnd.nextInt(100) < 25) {
-                eventRoles.add(new Object[]{i, (long) (orgCount + 1 + rnd.nextInt(personCount)), "PERFORMER", 1});
+                eventRoles.add(new Object[]{eventId, personIds[rnd.nextInt(personCount)], "PERFORMER", 1});
             }
-            eventKeywords.add(new Object[]{i, kw1});
+            eventKeywords.add(new Object[]{eventId, kw1});
             if (kw2 != kw1) {
-                eventKeywords.add(new Object[]{i, kw2});
+                eventKeywords.add(new Object[]{eventId, kw2});
             }
             if (free) {
-                offers.add(new Object[]{offerId++, i, "Eintritt frei", java.math.BigDecimal.ZERO, "EUR", "InStock"});
+                offers.add(new Object[]{++ids.offer, eventId, "Eintritt frei", java.math.BigDecimal.ZERO, "EUR", "InStock"});
             } else {
-                offers.add(new Object[]{offerId++, i, "Standardticket",
+                offers.add(new Object[]{++ids.offer, eventId, "Standardticket",
                         new java.math.BigDecimal(5 + rnd.nextInt(40)), "EUR", "InStock"});
                 if (rnd.nextBoolean()) {
-                    offers.add(new Object[]{offerId++, i, "Ermäßigt",
+                    offers.add(new Object[]{++ids.offer, eventId, "Ermäßigt",
                             new java.math.BigDecimal(3 + rnd.nextInt(15)), "EUR", "InStock"});
                 }
             }
@@ -280,9 +337,9 @@ public class DevDataInitializer implements InitializingBean {
         if (events.isEmpty()) {
             return;
         }
-        jdbc.batchUpdate("INSERT INTO VK_EVENT (ID, PUBLIC_ID, SCHEMA_TYPE, TITLE, SHORT_DESCRIPTION, DESCRIPTION, "
+        jdbc.batchUpdate("INSERT INTO VK_EVENT (ID, PUBLIC_ID, MANDANT_ID, VK_ID, SCHEMA_TYPE, TITLE, SHORT_DESCRIPTION, DESCRIPTION, "
                 + "START_AT, END_AT, ATTENDANCE_MODE, EVENT_STATUS, WORKFLOW_STATUS, IS_ACCESSIBLE_FOR_FREE, "
-                + "PLACE_ID, VIRTUAL_LOCATION_ID, SEARCH_TEXT, PUBLISHED_AT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                + "PLACE_ID, VIRTUAL_LOCATION_ID, SEARCH_TEXT, PUBLISHED_AT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 events);
         events.clear();
     }

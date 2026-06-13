@@ -1,6 +1,7 @@
 package de.example.vk.config;
 
 import de.example.vk.servlet.SecurityHeadersFilter;
+import de.example.vk.servlet.TenantFilter;
 import org.springframework.web.servlet.support.AbstractAnnotationConfigDispatcherServletInitializer;
 
 import javax.servlet.DispatcherType;
@@ -14,8 +15,8 @@ import java.util.EnumSet;
  *
  * <p>Es wird ein einziger Spring-Kontext verwendet: {@link WebConfig} scannt das
  * gesamte Paket {@code de.example.vk} (inkl. {@link DataSourceConfig}), das haelt
- * die Konfiguration leichtgewichtig. Die SPA-Shell wird ueber
- * {@link de.example.vk.servlet.ShellServlet} ausgeliefert.</p>
+ * die Konfiguration leichtgewichtig. Statische Dateien (SPA-Shell, Assets) liefert
+ * der Default-Servlet des Containers aus.</p>
  */
 public class WebAppInitializer extends AbstractAnnotationConfigDispatcherServletInitializer {
 
@@ -44,5 +45,8 @@ public class WebAppInitializer extends AbstractAnnotationConfigDispatcherServlet
         super.onStartup(servletContext);
         servletContext.addFilter("securityHeaders", new SecurityHeadersFilter())
                 .addMappingForUrlPatterns(EnumSet.allOf(DispatcherType.class), false, "/*");
+        // Mandanten-Kontext fuer alle API-Aufrufe aufloesen.
+        servletContext.addFilter("tenant", new TenantFilter())
+                .addMappingForUrlPatterns(EnumSet.allOf(DispatcherType.class), false, "/api/*");
     }
 }

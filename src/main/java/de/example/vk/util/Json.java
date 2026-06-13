@@ -22,7 +22,9 @@ import java.time.format.DateTimeFormatter;
  */
 public final class Json {
 
-    private static final ZoneId ZONE = ZoneId.systemDefault();
+    // Feste Anwendungs-Zeitzone, unabhaengig von der Server-Zeitzone. So liefert
+    // dieselbe gespeicherte Wandzeit immer denselben Offset (kein Server-TZ-Drift).
+    private static final ZoneId ZONE = ZoneId.of("Europe/Berlin");
     private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
 
     private Json() {

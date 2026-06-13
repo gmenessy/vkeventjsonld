@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import de.example.vk.util.Json;
 import de.example.vk.util.SearchTextUtil;
+import de.example.vk.util.VkConfig;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -21,12 +22,15 @@ public class PartyRepository {
     public JsonArray suggestOrganizers(String q, int limit) {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("q", "%" + SearchTextUtil.normalizeTerm(q) + "%")
-                .addValue("lim", limit);
+                .addValue("lim", limit)
+                .addValue("mandant", VkConfig.requireMandant())
+                .addValue("vk", VkConfig.requireVkId());
         final JsonArray result = new JsonArray();
         jdbc.query(
                 "SELECT DISTINCT pa.PUBLIC_ID, pa.DISPLAY_NAME "
               + "FROM VK_PARTY pa "
-              + "WHERE LOWER(pa.DISPLAY_NAME) LIKE :q "
+              + "WHERE pa.MANDANT_ID = :mandant AND pa.VK_ID = :vk "
+              + "  AND LOWER(pa.DISPLAY_NAME) LIKE :q "
               + "  AND EXISTS (SELECT 1 FROM VK_EVENT_PARTY_ROLE r "
               + "              WHERE r.PARTY_ID = pa.ID AND r.ROLE_TYPE = 'ORGANIZER') "
               + "ORDER BY pa.DISPLAY_NAME FETCH FIRST :lim ROWS ONLY",

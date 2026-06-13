@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import de.example.vk.util.ClobUtil;
 import de.example.vk.util.Json;
 import de.example.vk.util.SearchTextUtil;
+import de.example.vk.util.VkConfig;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
@@ -109,7 +110,11 @@ public class EventRepository {
     }
 
     private String buildWhere(Query req, MapSqlParameterSource params) {
-        StringBuilder where = new StringBuilder("WHERE e.WORKFLOW_STATUS = 'PUBLISHED'");
+        // Mandanten-Isolation zuerst: jede Suche laeuft strikt im aktuellen (MANDANT_ID, VK_ID).
+        StringBuilder where = new StringBuilder(
+                "WHERE e.MANDANT_ID = :mandant AND e.VK_ID = :vk AND e.WORKFLOW_STATUS = 'PUBLISHED'");
+        params.addValue("mandant", VkConfig.requireMandant());
+        params.addValue("vk", VkConfig.requireVkId());
 
         if (req.from != null) {
             where.append(" AND e.START_AT >= :fromTs");
@@ -219,7 +224,11 @@ public class EventRepository {
     // ------------------------------------------------------------------
 
     public JsonObject findPublishedByPublicId(String publicId) {
-        MapSqlParameterSource p = new MapSqlParameterSource("pid", publicId);
+        // Isolation: Detailabruf nur innerhalb des aktuellen Mandanten/VK, auch wenn
+        // die (global eindeutige) PUBLIC_ID bekannt waere.
+        MapSqlParameterSource p = new MapSqlParameterSource("pid", publicId)
+                .addValue("mandant", VkConfig.requireMandant())
+                .addValue("vk", VkConfig.requireVkId());
 
         List<JsonObject> events = jdbc.query(
                 "SELECT e.*, "
@@ -231,7 +240,8 @@ public class EventRepository {
               + "LEFT JOIN VK_PLACE p ON p.ID = e.PLACE_ID "
               + "LEFT JOIN VK_ADDRESS a ON a.ID = p.ADDRESS_ID "
               + "LEFT JOIN VK_VIRTUAL_LOCATION v ON v.ID = e.VIRTUAL_LOCATION_ID "
-              + "WHERE e.PUBLIC_ID = :pid AND e.WORKFLOW_STATUS = 'PUBLISHED'",
+              + "WHERE e.PUBLIC_ID = :pid AND e.MANDANT_ID = :mandant AND e.VK_ID = :vk "
+              + "  AND e.WORKFLOW_STATUS = 'PUBLISHED'",
                 p, DETAIL_MAPPER);
 
         if (events.isEmpty()) {
@@ -239,7 +249,8 @@ public class EventRepository {
         }
         JsonObject event = events.get(0);
         Long eventId = jdbc.queryForObject(
-                "SELECT ID FROM VK_EVENT WHERE PUBLIC_ID = :pid", p, Long.class);
+                "SELECT ID FROM VK_EVENT WHERE PUBLIC_ID = :pid AND MANDANT_ID = :mandant AND VK_ID = :vk",
+                p, Long.class);
         loadRelations(event, eventId);
         return event;
     }

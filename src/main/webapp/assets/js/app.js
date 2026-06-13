@@ -10,6 +10,7 @@
 
   // ---- State --------------------------------------------------------------
   var state = {
+    mandant: null, vk: null,        // aktueller Mandant/VK (Multi-Tenant)
     q: "", from: "", to: "", category: "", place: "", placeLabel: "",
     organizer: "", organizerLabel: "", attendanceMode: "", free: false,
     sort: "date", page: 1
@@ -18,6 +19,7 @@
   var categories = [];
   var searchController = null;     // AbortController der laufenden Suche
   var searchTimer = null;
+  var internalHash = false;        // unterscheidet eigene Hash-Updates von echter Navigation
 
   // ---- DOM-Helfer ---------------------------------------------------------
   function $(id) { return document.getElementById(id); }
@@ -53,6 +55,9 @@
         }
       });
     }
+    // Mandanten-Kontext bei jeder API-Anfrage mitschicken (Tenant-Isolation).
+    if (state.mandant != null) { url.searchParams.set("mandant", state.mandant); }
+    if (state.vk != null) { url.searchParams.set("vk", state.vk); }
     return url.toString();
   }
 
@@ -351,6 +356,7 @@
   function goToPage(page) {
     state.page = page;
     runSearch();
+    writeListHash();
     $("vk-results").scrollIntoView({ block: "start" });
     $("vk-results").focus();
   }
@@ -358,6 +364,57 @@
   function resetAndSearch() {
     state.page = 1;
     runSearch();
+    writeListHash();
+  }
+
+  // ---- Deep-Linkbare Such-URLs (Hash-State) -------------------------------
+  function listHash() {
+    var p = new URLSearchParams();
+    if (state.q) p.set("q", state.q);
+    if (state.from) p.set("from", state.from);
+    if (state.to) p.set("to", state.to);
+    if (state.category) p.set("category", state.category);
+    if (state.place) { p.set("place", state.place); p.set("placeLabel", state.placeLabel || ""); }
+    if (state.organizer) { p.set("organizer", state.organizer); p.set("orgLabel", state.organizerLabel || ""); }
+    if (state.attendanceMode) p.set("attendanceMode", state.attendanceMode);
+    if (state.free) p.set("free", "true");
+    if (state.sort && state.sort !== "date") p.set("sort", state.sort);
+    if (state.page > 1) p.set("page", String(state.page));
+    var qs = p.toString();
+    return qs ? "#/events?" + qs : "#/events";
+  }
+
+  function writeListHash() {
+    var h = listHash();
+    if (h === (location.hash || "")) return;   // keine Aenderung -> kein Event
+    internalHash = true;
+    location.hash = h;
+  }
+
+  function applyHashToState() {
+    var hash = location.hash || "";
+    var qIndex = hash.indexOf("?");
+    var p = new URLSearchParams(qIndex >= 0 ? hash.slice(qIndex + 1) : "");
+    state.q = p.get("q") || "";
+    state.from = p.get("from") || "";
+    state.to = p.get("to") || "";
+    state.category = p.get("category") || "";
+    state.place = p.get("place") || "";
+    state.placeLabel = p.get("placeLabel") || "";
+    state.organizer = p.get("organizer") || "";
+    state.organizerLabel = p.get("orgLabel") || "";
+    state.attendanceMode = p.get("attendanceMode") || "";
+    state.free = p.get("free") === "true";
+    state.sort = p.get("sort") || "date";
+    state.page = Math.max(1, parseInt(p.get("page") || "1", 10) || 1);
+  }
+
+  function syncFilterInputs() {
+    var input = $("vk-q");
+    input.value = state.q;
+    $("vk-q-clear").hidden = !state.q;
+    $("vk-sort").value = state.sort;
+    renderFilters();
   }
 
   // ===========================================================================
@@ -405,7 +462,7 @@
 
     content.appendChild(el("button", {
       type: "button", "class": "vk-btn vk-btn--text vk-detail__back", text: "← Zurück zur Liste",
-      onclick: function () { location.hash = "#/events"; }
+      onclick: function () { location.hash = listHash(); }
     }));
 
     var start = parseDate(ev.startAt);
@@ -594,9 +651,14 @@
     var id = currentDetailId();
     if (id) {
       openDetail(id);
-    } else {
-      closeDetail();
+      return;
     }
+    // Listenansicht: Filter aus der URL uebernehmen und suchen (teilbare Links,
+    // Browser zurueck/vor zwischen Suchzustaenden).
+    closeDetail();
+    applyHashToState();
+    syncFilterInputs();
+    runSearch();
   }
 
   // ===========================================================================
@@ -636,21 +698,70 @@
       if (e.key === "Escape") {
         $("vk-filters").classList.remove("is-open");
         if ($("vk-detail").classList.contains("is-active") && window.innerWidth < 1200) {
-          location.hash = "#/events";
+          location.hash = listHash();
         }
       }
     });
 
-    window.addEventListener("hashchange", handleRoute);
+    window.addEventListener("hashchange", function () {
+      if (internalHash) { internalHash = false; return; }  // eigenes Update -> ignorieren
+      handleRoute();
+    });
 
-    // Kategorien laden, dann Filter + erste Suche
-    getJson(API + "/categories").then(function (body) {
+    $("vk-switcher-select").addEventListener("change", function (e) {
+      switchVk(e.target.value);
+    });
+
+    // Bootstrap: erst Mandanten-/VK-Kontext, dann Kategorien, dann Filter aus URL + Suche.
+    loadContext().then(loadCategories).then(function () {
+      applyHashToState();
+      syncFilterInputs();
+      var id = currentDetailId();
+      runSearch();
+      if (id) { openDetail(id); }
+    });
+  }
+
+  // ---- Multi-Tenant-Kontext -----------------------------------------------
+  function loadContext() {
+    return getJson(API + "/context").then(function (body) {
+      var ctx = body.data || {};
+      state.mandant = ctx.mandant;
+      state.vk = ctx.vk;
+      renderSwitcher(ctx);
+    }).catch(function () { /* Default-Kontext bleibt aktiv */ });
+  }
+
+  function renderSwitcher(ctx) {
+    var vks = ctx.vks || [];
+    var current = vks.filter(function (v) { return v.current; })[0];
+    if (current) { $("vk-vk-name").textContent = current.name; }
+    var wrap = $("vk-switcher");
+    var sel = $("vk-switcher-select");
+    clear(sel);
+    if (vks.length < 2) { wrap.hidden = true; return; }
+    vks.forEach(function (v) {
+      var opt = el("option", { value: String(v.vkId), text: v.name });
+      if (v.current) { opt.selected = true; }
+      sel.appendChild(opt);
+    });
+    wrap.hidden = false;
+  }
+
+  function switchVk(vkId) {
+    state.vk = Number(vkId);
+    // Filter zuruecksetzen, Kategorien des neuen VK laden, neu suchen.
+    state.category = ""; state.place = ""; state.placeLabel = "";
+    state.organizer = ""; state.organizerLabel = ""; state.page = 1;
+    if (location.hash.indexOf("#/events/") === 0) { location.hash = "#/events"; }
+    loadContext().then(loadCategories).then(function () { runSearch(); });
+  }
+
+  function loadCategories() {
+    return getJson(API + "/categories").then(function (body) {
       categories = body.data || [];
       renderFilters();
     }).catch(function () { renderFilters(); });
-
-    runSearch();
-    handleRoute();
   }
 
   if (document.readyState === "loading") {
