@@ -7,6 +7,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.servlet.http.HttpServletResponse;
+
 @RestController
 @RequestMapping("/categories")
 public class CategoryController {
@@ -18,7 +20,9 @@ public class CategoryController {
     }
 
     @GetMapping
-    public JsonObject tree() {
+    public JsonObject tree(HttpServletResponse response) {
+        // Kategoriebaum ist weitgehend stabil -> kurz cachen (mandantenspezifische Zähler).
+        response.setHeader("Cache-Control", "private, max-age=120");
         return Json.ok(categoryRepository.findTree());
     }
 }

@@ -22,6 +22,15 @@ public class CategoryRepository {
         this.jdbc = jdbc;
     }
 
+    /** Alle aktiven Kategorie-Slugs (global; für die NL-Suche-Validierung). */
+    public java.util.Set<String> activeSlugs() {
+        final java.util.Set<String> slugs = new java.util.LinkedHashSet<String>();
+        jdbc.query("SELECT SLUG FROM VK_CATEGORY WHERE ACTIVE = 'Y'",
+                new MapSqlParameterSource(),
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> slugs.add(rs.getString("SLUG")));
+        return slugs;
+    }
+
     /** Aktiver Kategoriebaum inkl. Anzahl veroeffentlichter Events je Kategorie. */
     public JsonArray findTree() {
         final Map<Long, JsonObject> byId = new HashMap<Long, JsonObject>();

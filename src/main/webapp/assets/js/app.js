@@ -117,6 +117,13 @@
     ]);
     dateGroup.appendChild(fromField);
     dateGroup.appendChild(toField);
+    // Schnellauswahl-Presets (häufigste Nutzerabsicht)
+    var presets = el("div", { "class": "vk-chip-row", role: "group", "aria-label": "Zeitraum-Schnellauswahl" });
+    [["today", "Heute"], ["weekend", "Wochenende"], ["month", "Diesen Monat"]].forEach(function (p) {
+      presets.appendChild(el("button", { type: "button", "class": "vk-chip", text: p[1],
+        onclick: function () { applyDatePreset(p[0]); } }));
+    });
+    dateGroup.appendChild(presets);
     body.appendChild(dateGroup);
 
     // Kategorien
@@ -200,6 +207,38 @@
     document.querySelectorAll("#vk-filters-body [data-mode]").forEach(function (b) {
       b.setAttribute("aria-pressed", b.getAttribute("data-mode") === state.attendanceMode ? "true" : "false");
     });
+  }
+
+  function isoDay(d) {
+    return d.getFullYear() + "-" +
+      String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+  }
+
+  /** Setzt state.from/to anhand eines Presets und löst die Suche aus. */
+  function applyDatePreset(kind) {
+    var now = new Date();
+    var from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var to = new Date(from);
+    if (kind === "today") {
+      // from == to == heute
+    } else if (kind === "weekend") {
+      // nächster (oder heutiger) Samstag bis Sonntag
+      var day = from.getDay(); // 0=So..6=Sa
+      var daysToSat = (6 - day + 7) % 7;
+      from.setDate(from.getDate() + daysToSat);
+      to = new Date(from);
+      to.setDate(from.getDate() + 1);
+    } else if (kind === "month") {
+      to = new Date(now.getFullYear(), now.getMonth() + 1, 0); // letzter Tag des Monats
+    }
+    state.from = isoDay(from);
+    state.to = isoDay(to);
+    var fromEl = $("vk-from");
+    var toEl = $("vk-to");
+    if (fromEl) fromEl.value = state.from;
+    if (toEl) toEl.value = state.to;
+    resetAndSearch();
   }
 
   /**
@@ -331,6 +370,7 @@
   function runSearch() {
     if (searchController) { searchController.abort(); }
     searchController = new AbortController();
+    renderActiveFilters();
     showSkeletons();
     $("vk-results").setAttribute("aria-busy", "true");
     $("vk-result-count").textContent = "Suche läuft …";
@@ -456,6 +496,93 @@
     state.page = 1;
     runSearch();
     writeListHash();
+  }
+
+  /**
+   * GenAI-Quick-Win: freie Eingabe serverseitig in strukturierte Filter umwandeln
+   * (z. B. „kostenlose Konzerte am Wochenende"). Bei Fehlern Fallback auf Keyword-Suche.
+   */
+  function interpretQuery() {
+    var raw = $("vk-q").value.trim();
+    if (!raw) { $("vk-q").focus(); return; }
+    getJson(API + "/search/parse", { q: raw }).then(function (body) {
+      var f = body.data || {};
+      state.q = f.q || "";
+      state.from = f.from || "";
+      state.to = f.to || "";
+      state.category = f.category || "";
+      state.attendanceMode = f.attendanceMode || "";
+      state.free = f.free === true;
+      $("vk-q").value = state.q;
+      $("vk-q-clear").hidden = !state.q;
+      if (state.q && state.sort === "date") state.sort = "relevance";
+      else if (!state.q && state.sort === "relevance") state.sort = "date";
+      $("vk-sort").value = state.sort;
+      renderFilters();
+      resetAndSearch();
+      toast("Eingabe in Filter umgewandelt");
+    }).catch(function () {
+      setQuery(raw); resetAndSearch();   // Fallback: normale Keyword-Suche
+    });
+  }
+
+  /** Setzt den Suchbegriff und schaltet die Sortierung sinnvoll um (Relevanz bei Suche). */
+  function setQuery(value) {
+    state.q = value;
+    if (value && state.sort === "date") { state.sort = "relevance"; $("vk-sort").value = "relevance"; }
+    else if (!value && state.sort === "relevance") { state.sort = "date"; $("vk-sort").value = "date"; }
+  }
+
+  // ---- Aktive-Filter-Leiste (entfernbare Chips) ---------------------------
+  function findCategoryName(slug, cats) {
+    cats = cats || categories;
+    for (var i = 0; i < cats.length; i++) {
+      if (cats[i].id === slug) return cats[i].name;
+      if (cats[i].children && cats[i].children.length) {
+        var found = findCategoryName(slug, cats[i].children);
+        if (found) return found;
+      }
+    }
+    return slug;
+  }
+
+  function removeFilter(kind) {
+    if (kind === "q") { state.q = ""; $("vk-q").value = ""; $("vk-q-clear").hidden = true; setQuery(""); }
+    else if (kind === "category") state.category = "";
+    else if (kind === "place") { state.place = ""; state.placeLabel = ""; }
+    else if (kind === "organizer") { state.organizer = ""; state.organizerLabel = ""; }
+    else if (kind === "attendanceMode") state.attendanceMode = "";
+    else if (kind === "free") state.free = false;
+    else if (kind === "dates") { state.from = ""; state.to = ""; }
+    renderFilters();
+    resetAndSearch();
+    $("vk-results").focus();
+  }
+
+  function renderActiveFilters() {
+    var bar = $("vk-active-filters");
+    if (!bar) return;
+    clear(bar);
+    var chips = [];
+    if (state.q) chips.push(["q", "Suche: " + state.q]);
+    if (state.category) chips.push(["category", findCategoryName(state.category)]);
+    if (state.place) chips.push(["place", state.placeLabel || "Ort"]);
+    if (state.organizer) chips.push(["organizer", state.organizerLabel || "Veranstalter"]);
+    if (state.attendanceMode) chips.push(["attendanceMode", modeLabel(state.attendanceMode)]);
+    if (state.free) chips.push(["free", "Kostenlos"]);
+    if (state.from || state.to) chips.push(["dates", (state.from || "…") + " – " + (state.to || "…")]);
+
+    chips.forEach(function (c) {
+      bar.appendChild(el("button", {
+        type: "button", "class": "vk-active-chip",
+        "aria-label": "Filter entfernen: " + c[1],
+        onclick: function () { removeFilter(c[0]); }
+      }, [el("span", { text: c[1] }), el("span", { "class": "vk-active-chip__x", "aria-hidden": "true", text: "×" })]));
+    });
+    if (chips.length > 1) {
+      bar.appendChild(el("button", { type: "button", "class": "vk-btn vk-btn--text", text: "Alle zurücksetzen",
+        onclick: function () { $("vk-filters-reset").click(); } }));
+    }
   }
 
   // ---- Deep-Linkbare Such-URLs (Hash-State) -------------------------------
@@ -588,6 +715,20 @@
 
     if (ev.shortDescription) {
       content.appendChild(el("p", { text: ev.shortDescription }));
+    }
+
+    // Bilder mit fester aspect-ratio -> kein Layout-Shift beim Nachladen (CLS)
+    if (ev.images && ev.images.length) {
+      ev.images.forEach(function (img) {
+        if (!img.url) return;
+        var fig = el("figure", { "class": "vk-detail__media" }, [
+          el("img", { src: img.url, alt: img.altText || "", loading: "lazy", decoding: "async" })
+        ]);
+        if (img.copyrightText) {
+          fig.appendChild(el("figcaption", { text: "© " + img.copyrightText }));
+        }
+        content.appendChild(fig);
+      });
     }
 
     // Eckdaten
@@ -723,18 +864,53 @@
     walk(root, target);
   }
 
+  // JSON-LD direkt aus den bereits geladenen Detaildaten bauen – kein zweiter
+  // Request mehr (besseres INP). Der Server bleibt für /jsonld die kanonische Quelle.
   function injectJsonLd(ev) {
     var old = document.getElementById("vk-jsonld");
     if (old) old.remove();
-    fetch(API + "/events/" + encodeURIComponent(ev.id) + "/jsonld", { credentials: "same-origin" })
-      .then(function (r) { return r.text(); })
-      .then(function (txt) {
-        var s = document.createElement("script");
-        s.type = "application/ld+json";
-        s.id = "vk-jsonld";
-        s.textContent = txt;
-        document.head.appendChild(s);
-      }).catch(function () {});
+    var ld = { "@context": "https://schema.org", "@type": ev.schemaType || "Event",
+      "@id": location.origin + location.pathname + "#/events/" + ev.id, name: ev.title };
+    if (ev.shortDescription || ev.description) ld.description = ev.shortDescription || ev.description;
+    if (ev.startAt) ld.startDate = ev.startAt;
+    if (ev.endAt) ld.endDate = ev.endAt;
+    if (ev.eventStatus) ld.eventStatus = "https://schema.org/" + ev.eventStatus;
+    ld.eventAttendanceMode = "https://schema.org/" +
+      (ev.attendanceMode === "ONLINE" ? "OnlineEventAttendanceMode"
+        : ev.attendanceMode === "MIXED" ? "MixedEventAttendanceMode" : "OfflineEventAttendanceMode");
+    ld.isAccessibleForFree = !!ev.isAccessibleForFree;
+    if (ev.place) {
+      var place = { "@type": "Place", name: ev.place.name };
+      if (ev.place.address) {
+        var a = ev.place.address;
+        place.address = { "@type": "PostalAddress", streetAddress: a.streetAddress,
+          postalCode: a.postalCode, addressLocality: a.locality, addressRegion: a.region,
+          addressCountry: a.countryCode };
+      }
+      ld.location = place;
+    } else if (ev.virtualLocation) {
+      ld.location = { "@type": "VirtualLocation", name: ev.virtualLocation.name, url: ev.virtualLocation.url };
+    }
+    if (ev.organizers && ev.organizers.length) {
+      ld.organizer = ev.organizers.map(function (o) {
+        return { "@type": o.type === "PERSON" ? "Person" : "Organization", name: o.displayName, url: o.url };
+      });
+    }
+    if (ev.offers && ev.offers.length) {
+      ld.offers = ev.offers.map(function (of) {
+        return { "@type": "Offer", name: of.name,
+          price: of.price != null ? String(of.price) : undefined, priceCurrency: of.priceCurrency, url: of.url };
+      });
+    }
+    if (ev.images && ev.images.length) { ld.image = ev.images.map(function (i) { return i.url; }); }
+    if (ev.keywords && ev.keywords.length) { ld.keywords = ev.keywords.join(", "); }
+    if (ev.canonicalUrl) ld.url = ev.canonicalUrl;
+
+    var s = document.createElement("script");
+    s.type = "application/ld+json";
+    s.id = "vk-jsonld";
+    s.textContent = JSON.stringify(ld);
+    document.head.appendChild(s);
   }
 
   function shareEvent(ev) {
@@ -783,17 +959,19 @@
     var input = $("vk-q");
     var clearBtn = $("vk-q-clear");
 
-    form.addEventListener("submit", function (e) { e.preventDefault(); state.q = input.value.trim(); resetAndSearch(); });
+    form.addEventListener("submit", function (e) { e.preventDefault(); setQuery(input.value.trim()); resetAndSearch(); });
     input.addEventListener("input", function () {
       clearBtn.hidden = !input.value;
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(function () { state.q = input.value.trim(); resetAndSearch(); }, 250);
+      searchTimer = setTimeout(function () { setQuery(input.value.trim()); resetAndSearch(); }, 250);
     });
     clearBtn.addEventListener("click", function () {
-      input.value = ""; clearBtn.hidden = true; state.q = ""; resetAndSearch(); input.focus();
+      input.value = ""; clearBtn.hidden = true; setQuery(""); resetAndSearch(); input.focus();
     });
 
     $("vk-sort").addEventListener("change", function (e) { state.sort = e.target.value; resetAndSearch(); });
+
+    $("vk-q-interpret").addEventListener("click", interpretQuery);
 
     $("vk-filters-reset").addEventListener("click", function () {
       state = { mandant: state.mandant, vk: state.vk, q: state.q, from: "", to: "", category: "",

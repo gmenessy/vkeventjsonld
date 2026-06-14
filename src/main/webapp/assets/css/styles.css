@@ -158,6 +158,11 @@ a { color: var(--vk-primary); }
   font-size: 1.4rem; cursor: pointer; width: 36px; height: 36px; border-radius: 50%;
 }
 .vk-search__clear:hover { background: color-mix(in srgb, var(--vk-on-surface) 8%, transparent); }
+.vk-search__interpret {
+  border: 0; background: transparent; cursor: pointer; font-size: 1.1rem;
+  width: 40px; height: 40px; min-width: 40px; border-radius: 50%; line-height: 1;
+}
+.vk-search__interpret:hover { background: color-mix(in srgb, var(--vk-primary) 14%, transparent); }
 
 /* ---- Drei-gliedriges Layout ---- */
 .vk-layout {
@@ -351,6 +356,25 @@ a { color: var(--vk-primary); }
   padding: var(--vk-space-3) var(--vk-space-5); border-radius: var(--vk-radius-sm);
   box-shadow: 0 8px 24px rgba(0,0,0,.25); z-index: 200; max-width: 90vw;
 }
+
+/* ---- Aktive-Filter-Leiste ---- */
+.vk-active-filters { display: flex; flex-wrap: wrap; gap: var(--vk-space-2); margin-bottom: var(--vk-space-3); align-items: center; }
+.vk-active-chip {
+  display: inline-flex; align-items: center; gap: var(--vk-space-2);
+  background: var(--vk-secondary-container); color: var(--vk-on-secondary-container);
+  border: 0; border-radius: var(--vk-radius-xl); padding: var(--vk-space-2) var(--vk-space-3);
+  font: inherit; cursor: pointer; min-height: 36px;
+}
+.vk-active-chip:hover { filter: brightness(.97); }
+.vk-active-chip__x { font-size: 1.1rem; line-height: 1; }
+
+/* ---- Detail-Bilder (CLS-sicher) ---- */
+.vk-detail__media { margin: 0 0 var(--vk-space-4); }
+.vk-detail__media img {
+  width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover;
+  border-radius: var(--vk-radius-md); background: var(--vk-surface-container-high); display: block;
+}
+.vk-detail__media figcaption { font-size: .8rem; color: var(--vk-on-surface-variant); margin-top: var(--vk-space-1); }
 
 /* ==========================================================================
    Responsive – Compact (Mobil) und Medium (Tablet)

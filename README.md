@@ -135,6 +135,14 @@ Einheitliches Antwortformat:
   eine Tag-Allowlist gefiltert.
 - WCAG-orientiert: Skip-Link, sichtbarer Fokus, Tastaturbedienung,
   44px-Touch-Targets, `prefers-reduced-motion`/`-transparency`/`-contrast`.
+- UX/Performance (Sprint 3): „Beste Treffer"-Relevanzsortierung (Titel höher
+  gewichtet), entfernbare Aktive-Filter-Chips, Datums-Presets (Heute/Wochenende/
+  Monat), Detail-Bilder mit `aspect-ratio` gegen CLS, JSON-LD client-seitig (kein
+  zweiter Request), `Cache-Control` für den Kategoriebaum.
+- GenAI-Quick-Win (Sprint 4): natürlichsprachige Suche → strukturierte Filter
+  (`GET /api/search/parse`, „✨"-Button). Regelbasiert (deutsch), **null Latenz/
+  Kosten** im Hot-Path und zugleich harter Fallback; ein LLM-Parser (z. B. Claude
+  Haiku) kann `NlQueryParser.parse` later als Drop-in ersetzen.
 - A11y-Härtung (Sprint 2): Ort-/Veranstalter-Autocomplete als vollwertiges
   ARIA-1.2-Combobox (Pfeiltasten, `aria-activedescendant`, Enter/Escape, Home/End);
   Filter als gelabelte Toggle-Gruppen (`role="group"`); mobiler Filter-Drawer als

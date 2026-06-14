@@ -20,10 +20,12 @@
       <label class="vk-visually-hidden" for="vk-q">Veranstaltungen durchsuchen</label>
       <span class="vk-search__icon" aria-hidden="true">🔍</span>
       <input class="vk-search__input" id="vk-q" type="search" name="q"
-             placeholder="Suchen: Titel, Ort, Veranstalter, Stichwort …"
+             placeholder="Suchen, z. B. „kostenlose Konzerte am Wochenende“ …"
              enterkeyhint="search" aria-describedby="vk-result-count">
       <button class="vk-search__clear" id="vk-q-clear" type="button"
               aria-label="Suche zurücksetzen" hidden>×</button>
+      <button class="vk-search__interpret" id="vk-q-interpret" type="button"
+              aria-label="Eingabe intelligent in Filter umwandeln" title="Intelligente Suche">✨</button>
     </form>
   </header>
 
@@ -48,6 +50,7 @@
         <div class="vk-results__tools">
           <label class="vk-visually-hidden" for="vk-sort">Sortierung</label>
           <select class="vk-select" id="vk-sort">
+            <option value="relevance">Beste Treffer</option>
             <option value="date">Datum aufsteigend</option>
             <option value="date_desc">Datum absteigend</option>
           </select>
@@ -55,6 +58,7 @@
                   aria-expanded="false" aria-controls="vk-filters">Filter</button>
         </div>
       </div>
+      <div class="vk-active-filters" id="vk-active-filters" aria-label="Aktive Filter"></div>
       <ol class="vk-cards" id="vk-cards"></ol>
       <nav class="vk-pagination" id="vk-pagination" aria-label="Seiten"></nav>
     </section>
