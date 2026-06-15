@@ -695,6 +695,29 @@
     return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/["\\]/g, "\\$&");
   }
 
+  // ISO-8601-Dauer (z. B. "PT2H30M") -> "2 Std 30 Min".
+  function fmtDuration(iso) {
+    var m = /^PT(?:(\d+)H)?(?:(\d+)M)?/.exec(iso || "");
+    if (!m) return "";
+    var h = m[1] ? parseInt(m[1], 10) : 0;
+    var min = m[2] ? parseInt(m[2], 10) : 0;
+    var parts = [];
+    if (h) parts.push(h + " Std");
+    if (min) parts.push(min + " Min");
+    return parts.join(" ");
+  }
+
+  function appendPartySection(content, title, list) {
+    if (!list || !list.length) return;
+    var sec = el("div", { "class": "vk-detail__section" }, [el("h3", { text: title })]);
+    list.forEach(function (p) {
+      var lines = [el("strong", { text: p.displayName })];
+      if (p.url) lines.push(el("div", {}, [el("a", { href: p.url, target: "_blank", rel: "noopener noreferrer", text: p.url })]));
+      sec.appendChild(el("p", {}, lines));
+    });
+    content.appendChild(sec);
+  }
+
   function renderDetail(ev) {
     var content = $("vk-detail-content");
     clear(content);
@@ -743,6 +766,14 @@
       if (end) when += " – " + (sameDay(start, end) ? fmtTime(end) + " Uhr" : fmtDateLong(end));
       row("Wann", when);
     }
+    if (ev.doorTime) {
+      var door = parseDate(ev.doorTime);
+      if (door) row("Einlass", fmtTime(door) + " Uhr");
+    }
+    if (ev.durationIso) {
+      var dur = fmtDuration(ev.durationIso);
+      if (dur) row("Dauer", dur);
+    }
     if (ev.place) {
       var loc = ev.place.name;
       if (ev.place.address) {
@@ -783,6 +814,10 @@
       });
       content.appendChild(orgSection);
     }
+
+    // Mitwirkende / Sponsoren
+    appendPartySection(content, "Mitwirkende", ev.performers);
+    appendPartySection(content, "Sponsoren", ev.sponsors);
 
     // Angebote / Tickets
     if (ev.offers && ev.offers.length) {
@@ -1142,21 +1177,57 @@
     f.keywords = inputField("Schlagworte (mit Komma getrennt)", "text");
     f.free = checkboxField("Kostenlose Veranstaltung");
 
+    var saveState = el("span", { "class": "vk-hint", "aria-live": "polite" });
     var formEl = el("form", { "class": "vk-form" }, [
       f.title.field, f.shortDescription.field, f.description.field,
       f.startAt.field, f.endAt.field, f.mode.field, f.place.field, f.virtualUrl.field,
       f.category.field, f.organizerName.field, f.organizerEmail.field, f.keywords.field, f.free.field,
       err,
       el("div", { "class": "vk-form__actions" }, [
-        el("button", { type: "submit", "class": "vk-btn", text: publicId ? "Speichern" : "Entwurf anlegen" })
+        el("button", { type: "submit", "class": "vk-btn", text: publicId ? "Speichern" : "Entwurf anlegen" }),
+        saveState
       ])
     ]);
 
+    var cockpit = buildCockpit();
+    var restoreBar = el("div", {});
+    var editor = el("div", { "class": "vk-editor" }, [
+      el("div", {}, [restoreBar, formEl]), cockpit.element
+    ]);
+    parent.appendChild(editor);
+
+    var storageKey = "vk-draft:" + (state.vk || 0) + ":" + (publicId || "new");
+
+    function update() { cockpit.update(snapshot()); }
+    function snapshot() {
+      var s = collect(f);
+      s.placeLabel = f.place.getLabel();
+      return s;
+    }
+
+    // Autosave (lokal, Spec 19.6)
+    var saveTimer = null;
+    function autosave() {
+      try { localStorage.setItem(storageKey, JSON.stringify(snapshot())); saveState.textContent = "Lokal gesichert"; }
+      catch (e) { /* Speicher voll/aus -> ignorieren */ }
+    }
+    formEl.addEventListener("input", function () {
+      saveState.textContent = "…";
+      update();
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(autosave, 1200);
+    });
+    formEl.addEventListener("change", update);
+
+    // Vorhandenen Server-Stand laden bzw. lokalen Entwurf anbieten
     if (publicId) {
       getJson(API + "/me/events/" + encodeURIComponent(publicId)).then(function (body) {
-        prefill(f, body.data);
+        prefill(f, body.data); update();
       }).catch(function (ex) { err.textContent = ex.message; });
+    } else {
+      update();
     }
+    offerLocalRestore(restoreBar, storageKey, f, update);
 
     formEl.addEventListener("submit", function (e) {
       e.preventDefault(); err.textContent = "";
@@ -1164,10 +1235,137 @@
       var p = publicId
         ? sendJson("PUT", API + "/me/events/" + encodeURIComponent(publicId), payload)
         : sendJson("POST", API + "/me/events", payload);
-      p.then(function () { toast("Gespeichert"); location.hash = "#/me"; })
-        .catch(function (ex) { err.textContent = ex.message; });
+      p.then(function () {
+        try { localStorage.removeItem(storageKey); } catch (e2) {}
+        toast("Gespeichert"); location.hash = "#/me";
+      }).catch(function (ex) { err.textContent = ex.message; });
     });
-    parent.appendChild(formEl);
+  }
+
+  function applySnapshot(f, s) {
+    if (!s) return;
+    f.title.input.value = s.title || "";
+    f.shortDescription.input.value = s.shortDescription || "";
+    f.description.input.value = s.description || "";
+    f.startAt.input.value = s.startAt || "";
+    f.endAt.input.value = s.endAt || "";
+    f.mode.input.value = s.attendanceMode || "OFFLINE";
+    if (s.place) f.place.set(s.place, s.placeLabel || s.place);
+    f.virtualUrl.input.value = s.virtualUrl || "";
+    f.category.input.value = s.category || "";
+    f.organizerName.input.value = s.organizerName || "";
+    f.organizerEmail.input.value = s.organizerEmail || "";
+    f.keywords.input.value = (s.keywords || []).join(", ");
+    f.free.input.checked = !!s.isAccessibleForFree;
+  }
+
+  function offerLocalRestore(bar, key, f, update) {
+    var raw;
+    try { raw = localStorage.getItem(key); } catch (e) { return; }
+    if (!raw) return;
+    clear(bar);
+    bar.appendChild(el("div", { "class": "vk-restore" }, [
+      el("span", { text: "Es gibt einen lokal gesicherten Entwurf. " }),
+      el("button", { type: "button", "class": "vk-btn vk-btn--text", text: "Wiederherstellen",
+        onclick: function () { try { applySnapshot(f, JSON.parse(raw)); update(); } catch (e) {} clear(bar); } }),
+      el("button", { type: "button", "class": "vk-btn vk-btn--text", text: "Verwerfen",
+        onclick: function () { try { localStorage.removeItem(key); } catch (e) {} clear(bar); } })
+    ]));
+  }
+
+  // ---- Cockpit: Qualitätsampel + Smart Hints + Live-Preview ----
+  function buildCockpit() {
+    var ampel = el("div", { "class": "vk-ampel" });
+    var ampelText = el("span", { "class": "vk-ampel__text" });
+    var checklist = el("ul", { "class": "vk-checklist" });
+    var hints = el("ul", { "class": "vk-hints" });
+    var preview = el("div", { "class": "vk-preview" });
+    var el2 = el("aside", { "class": "vk-cockpit", "aria-label": "Qualität & Vorschau" }, [
+      el("h3", { text: "Qualität" }),
+      el("div", { "class": "vk-ampel-row" }, [ampel, ampelText]),
+      checklist,
+      el("h3", { text: "Hinweise" }), hints,
+      el("h3", { text: "Live-Vorschau" }), preview
+    ]);
+
+    function update(s) {
+      var checks = qualityChecks(s);
+      var passed = checks.filter(function (c) { return c.ok; }).length;
+      var requiredMissing = checks.some(function (c) { return c.required && !c.ok; });
+      var ratio = passed / checks.length;
+      var level = requiredMissing ? "red" : (ratio >= 1 ? "blue" : (ratio >= 0.8 ? "green" : "yellow"));
+      ampel.setAttribute("data-level", level);
+      ampelText.textContent = ({ red: "Pflichtangaben fehlen", yellow: "Veröffentlichbar, optimierbar",
+        green: "Vollständig und gut", blue: "Redaktionell besonders gut" })[level]
+        + " (" + passed + "/" + checks.length + ")";
+      clear(checklist);
+      checks.forEach(function (c) {
+        checklist.appendChild(el("li", { "class": c.ok ? "is-ok" : (c.required ? "is-miss" : "is-warn"),
+          text: (c.ok ? "✓ " : "• ") + c.label }));
+      });
+      var hl = smartHints(s);
+      clear(hints);
+      if (!hl.length) hints.appendChild(el("li", { "class": "vk-hint", text: "Keine Hinweise – sieht gut aus." }));
+      hl.forEach(function (h) { hints.appendChild(el("li", { text: h })); });
+      renderPreview(preview, s);
+    }
+    return { element: el2, update: update };
+  }
+
+  function qualityChecks(s) {
+    var online = s.attendanceMode === "ONLINE" || s.attendanceMode === "MIXED";
+    var physical = s.attendanceMode === "OFFLINE" || s.attendanceMode === "MIXED";
+    var endOk = !s.endAt || !s.startAt || new Date(s.endAt) > new Date(s.startAt);
+    return [
+      { label: "Titel vorhanden", ok: !!(s.title && s.title.trim().length >= 3), required: true },
+      { label: "Kurzbeschreibung", ok: !!s.shortDescription, required: false },
+      { label: "Beschreibung", ok: !!(s.description && s.description.trim()), required: false },
+      { label: "Beginn gesetzt", ok: !!s.startAt, required: true },
+      { label: "Endzeit plausibel", ok: endOk, required: false },
+      { label: "Ort/Online vollständig", ok: (!physical || !!s.place) && (!online || !!s.virtualUrl), required: true },
+      { label: "Veranstalter", ok: !!s.organizerName, required: true },
+      { label: "Kontakt-E-Mail", ok: !!s.organizerEmail, required: false },
+      { label: "Kategorie", ok: !!s.category, required: true },
+      { label: "Schlagworte", ok: !!(s.keywords && s.keywords.length), required: false }
+    ];
+  }
+
+  function smartHints(s) {
+    var out = [];
+    if (s.title && s.title.length > 80) out.push("Der Titel ist sehr lang – kürzer wirkt er in Listen besser.");
+    if (!s.shortDescription) out.push("Eine Kurzbeschreibung verbessert die Listendarstellung.");
+    if (s.startAt && s.endAt && new Date(s.endAt) <= new Date(s.startAt)) out.push("Endzeit liegt vor Startzeit.");
+    var online = s.attendanceMode === "ONLINE" || s.attendanceMode === "MIXED";
+    var physical = s.attendanceMode === "OFFLINE" || s.attendanceMode === "MIXED";
+    if (online && !s.virtualUrl) out.push("Online-Veranstaltung benötigt einen gültigen Link.");
+    if (physical && !s.place) out.push("Bitte einen Ort wählen.");
+    if (!s.organizerEmail) out.push("Es fehlt eine Kontaktmöglichkeit für Rückfragen.");
+    if (!s.keywords || !s.keywords.length) out.push("Schlagworte erhöhen die Auffindbarkeit.");
+    return out;
+  }
+
+  function renderPreview(target, s) {
+    clear(target);
+    var start = s.startAt ? new Date(s.startAt) : null;
+    var dateBox = el("div", { "class": "vk-card__date" }, [
+      el("span", { "class": "vk-card__day", text: start ? String(start.getDate()) : "–" }),
+      el("span", { "class": "vk-card__month", text: start ? MONTHS[start.getMonth()] : "" })
+    ]);
+    var tags = el("div", { "class": "vk-card__tags" });
+    if (s.isAccessibleForFree) tags.appendChild(el("span", { "class": "vk-tag vk-tag--free", text: "Kostenlos" }));
+    if (s.attendanceMode && s.attendanceMode !== "OFFLINE")
+      tags.appendChild(el("span", { "class": "vk-tag", text: modeLabel(s.attendanceMode) }));
+    var body = el("div", { "class": "vk-card__body" }, [
+      el("h3", { "class": "vk-card__title", text: s.title || "(Titel)" }),
+      el("div", { "class": "vk-card__meta" }, [
+        el("span", { text: start ? fmtTime(start) + " Uhr" : "" }),
+        s.placeLabel ? el("span", { text: s.placeLabel }) : null,
+        s.category ? el("span", { text: findCategoryName(s.category) }) : null
+      ]),
+      s.shortDescription ? el("p", { "class": "vk-card__desc", text: s.shortDescription }) : null,
+      tags
+    ]);
+    target.appendChild(el("div", { "class": "vk-card vk-card--preview" }, [dateBox, body]));
   }
 
   function collect(f) {
@@ -1363,6 +1561,7 @@
     var field = el("div", { "class": "vk-field vk-combo" }, [
       el("label", { "for": id, text: "Ort" }), input, list]);
     return { field: field, getId: function () { return selectedId; },
+      getLabel: function () { return input.value; },
       set: function (pid, name) { selectedId = pid; input.value = name || ""; } };
   }
 
