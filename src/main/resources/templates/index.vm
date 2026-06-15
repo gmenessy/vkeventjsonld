@@ -78,6 +78,8 @@
 
   <div class="vk-toast" id="vk-toast" role="status" aria-live="polite" hidden></div>
 
-  <script src="assets/js/app.js" defer></script>
+  <!-- Sicher escapte Konfiguration (Spezifikation 25.4): nicht-ausführbare JSON-Insel -->
+  <script id="vk-bootstrap" type="application/json">$esc.html($bootstrapJson)</script>
+  <script nonce="$nonce" src="assets/js/app.js" defer></script>
 </body>
 </html>

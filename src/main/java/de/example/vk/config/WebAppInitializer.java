@@ -2,6 +2,7 @@ package de.example.vk.config;
 
 import de.example.vk.servlet.AuthFilter;
 import de.example.vk.servlet.SecurityHeadersFilter;
+import de.example.vk.servlet.ShellServlet;
 import org.springframework.web.servlet.support.AbstractAnnotationConfigDispatcherServletInitializer;
 
 import javax.servlet.DispatcherType;
@@ -50,5 +51,11 @@ public class WebAppInitializer extends AbstractAnnotationConfigDispatcherServlet
                 .addMappingForUrlPatterns(EnumSet.allOf(DispatcherType.class), false, "/api/me/*", "/api/admin/*");
         // Der Mandanten-/VK-Kontext kommt aus ConfigVk (Spring-konfiguriert, ein
         // VK je System) – kein Request-basierter Tenant-Filter noetig.
+
+        // Velocity-sichere SPA-Shell am Kontext-Root ("" = exakt "/"); Assets bleiben
+        // beim Default-Servlet. SPA nutzt Hash-Routing, daher genügt "/".
+        ServletRegistration.Dynamic shell = servletContext.addServlet("shell", new ShellServlet());
+        shell.setLoadOnStartup(2);
+        shell.addMapping("");
     }
 }

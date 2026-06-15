@@ -127,6 +127,17 @@ Einheitliches Antwortformat:
 - `src/main/resources/db/oracle/V2__oracle_text.sql` – optionaler Volltextindex
 - `src/main/resources/db/h2/schema.sql` – strukturgleiches H2-Schema (Dev)
 
+## SPA-Shell (Velocity-sicher)
+
+Der Kontext-Root (`/`) wird über ein Velocity-Template (`templates/index.vm`,
+`ShellServlet`) ausgeliefert statt als statische Datei (Spezifikation 12/25):
+
+- pro Request ein **CSP-Nonce** (gesetzt im `SecurityHeadersFilter`, identisch in
+  Header und `<script nonce>`),
+- **sicher escaptes Bootstrap-JSON** (`$esc.html`) als nicht-ausführbare
+  JSON-Insel (`<script type="application/json">`), die die SPA beim Start liest,
+- statische Assets (CSS/JS) liefert weiterhin der Default-Servlet des Containers.
+
 ## Sicherheit / Barrierefreiheit
 
 - Content-Security-Policy & Sicherheits-Header (`SecurityHeadersFilter`),

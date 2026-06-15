@@ -1349,6 +1349,16 @@
     var input = $("vk-q");
     var clearBtn = $("vk-q-clear");
 
+    // Sicher escaptes Bootstrap-JSON aus der Velocity-Shell (Mandant/VK sofort verfügbar).
+    try {
+      var bootEl = document.getElementById("vk-bootstrap");
+      if (bootEl && bootEl.textContent.trim()) {
+        var boot = JSON.parse(bootEl.textContent);
+        if (boot.mandant != null) state.mandant = boot.mandant;
+        if (boot.vk != null) state.vk = boot.vk;
+      }
+    } catch (e) { /* Bootstrap optional */ }
+
     form.addEventListener("submit", function (e) { e.preventDefault(); setQuery(input.value.trim()); resetAndSearch(); });
     input.addEventListener("input", function () {
       clearBtn.hidden = !input.value;
