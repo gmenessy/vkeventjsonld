@@ -42,7 +42,29 @@ public class SecurityHeadersFilter implements Filter {
         http.setHeader("X-Content-Type-Options", "nosniff");
         http.setHeader("X-Frame-Options", "DENY");
         http.setHeader("Referrer-Policy", "same-origin");
+        applyCaching((HttpServletRequest) request, http);
         chain.doFilter(request, response);
+    }
+
+    /**
+     * Caching-Strategie (Performance, ohne Frische zu opfern):
+     * <ul>
+     *   <li>Statische Assets ({@code /assets/*}): eine Stunde cachebar; nach Ablauf
+     *       revalidiert der Browser über das vom Default-Servlet gesetzte ETag.</li>
+     *   <li>SPA-Shell (Kontext-Root): {@code no-cache}, da sie pro Request ein frisches
+     *       CSP-Nonce und Bootstrap-JSON trägt und nie veraltet ausgeliefert werden darf.</li>
+     *   <li>API-Antworten bleiben unangetastet (Controller setzen eigene Header,
+     *       z. B. der Kategoriebaum).</li>
+     * </ul>
+     */
+    private static void applyCaching(HttpServletRequest request, HttpServletResponse http) {
+        String uri = request.getRequestURI();
+        String ctx = request.getContextPath();
+        if (uri.startsWith(ctx + "/assets/")) {
+            http.setHeader("Cache-Control", "public, max-age=3600");
+        } else if (uri.equals(ctx + "/") || uri.equals(ctx) || uri.isEmpty()) {
+            http.setHeader("Cache-Control", "no-cache");
+        }
     }
 
     private static String newNonce() {
