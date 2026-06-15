@@ -114,6 +114,9 @@ Demo-Datensatz beim Start automatisch an.
 | GET | `/api/places?q=` | Ort-Autocomplete |
 | GET | `/api/organizers?q=` | Veranstalter-Autocomplete |
 | GET | `/api/context` | Aktueller Mandant/VK + wählbare VKs |
+| POST/GET | `/api/admin/imports` | CSV-/JSON-Import (Redaktion): Job anlegen, Jobs listen |
+| GET | `/api/admin/imports/{id}` | Import-Job mit Zeilen-Ergebnissen |
+| GET | `/api/admin/export/events?format=csv` | CSV-Export (Redaktion) |
 
 Alle Endpunkte sind mandantengescoped; der Kontext kommt aus `ConfigVk`
 (serverseitig, je System konfiguriert), nicht aus dem Request.

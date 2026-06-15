@@ -1210,6 +1210,53 @@
   function isoToLocal(iso) { return iso ? String(iso).slice(0, 16) : ""; }
 
   // ---- Redaktion (Review-Queue) ----
+  // ---- Import-Panel (CSV/JSON) ----
+  function renderImportPanel() {
+    var wrap = el("details", { "class": "vk-import" }, [el("summary", { text: "Import (CSV / JSON)" })]);
+    var fmt = el("select", { "class": "vk-select" }, [
+      el("option", { value: "csv", text: "CSV" }), el("option", { value: "json", text: "JSON" })]);
+    var status = el("select", { "class": "vk-select" }, [
+      el("option", { value: "DRAFT", text: "als Entwurf" }),
+      el("option", { value: "SUBMITTED", text: "direkt einreichen" })]);
+    var file = el("input", { type: "file", accept: ".csv,.json,text/csv,application/json" });
+    var result = el("div", { "class": "vk-members__list", "aria-live": "polite" });
+    var btn = el("button", { type: "button", "class": "vk-btn", text: "Importieren", onclick: doImport });
+    wrap.appendChild(el("div", { "class": "vk-form" }, [
+      el("div", { "class": "vk-field" }, [el("label", { text: "Format" }), fmt]),
+      el("div", { "class": "vk-field" }, [el("label", { text: "Zielstatus" }), status]),
+      el("div", { "class": "vk-field" }, [el("label", { text: "Datei" }), file]),
+      btn, result,
+      el("p", { "class": "vk-hint", text: "CSV-Spalten: title, shortDescription, startAt, endAt, "
+        + "category, attendanceMode, placeName, virtualUrl, organizerName, isFree, keywords" })
+    ]));
+
+    function doImport() {
+      var f = file.files && file.files[0];
+      if (!f) { toast("Bitte eine Datei wählen"); return; }
+      var reader = new FileReader();
+      reader.onload = function () {
+        sendJson("POST", API + "/admin/imports", { format: fmt.value, content: String(reader.result),
+          fileName: f.name, asStatus: status.value })
+          .then(function (job) {
+            clear(result);
+            var s = job.summary || {};
+            result.appendChild(el("p", { "class": "vk-result-count",
+              text: "Importiert: " + (s.imported || 0) + " · Übersprungen: " + (s.skipped || 0)
+                + " · Fehler: " + (s.errors || 0) }));
+            (job.items || []).filter(function (it) { return it.status !== "IMPORTED"; })
+              .slice(0, 20).forEach(function (it) {
+                result.appendChild(el("div", { "class": "vk-hint",
+                  text: "Zeile " + it.row + ": " + it.status + (it.error ? " – " + it.error : "") }));
+              });
+            toast("Import abgeschlossen");
+          })
+          .catch(function (ex) { toast("Import fehlgeschlagen: " + ex.message); });
+      };
+      reader.readAsText(f);
+    }
+    return wrap;
+  }
+
   function renderReview(parent) {
     membersHeader(parent, "Redaktion – Prüfung");
     var bar = el("div", { "class": "vk-chip-row" });
@@ -1220,6 +1267,7 @@
     parent.appendChild(bar);
     parent.appendChild(el("a", { "class": "vk-btn vk-btn--text", href: API + "/admin/export/events?format=csv",
       target: "_blank", rel: "noopener", text: "CSV-Export" }));
+    parent.appendChild(renderImportPanel());
     var listEl = el("div", { "class": "vk-members__list" });
     parent.appendChild(listEl);
     loadQueue("SUBMITTED");
