@@ -2,6 +2,7 @@ package de.example.vk.api;
 
 import com.google.gson.JsonObject;
 import de.example.vk.service.NotFoundException;
+import de.example.vk.service.ValidationException;
 import de.example.vk.util.Json;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +22,12 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public JsonObject notFound(NotFoundException ex) {
         return Json.error("NOT_FOUND", null, ex.getMessage());
+    }
+
+    @ExceptionHandler(ValidationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public JsonObject validation(ValidationException ex) {
+        return Json.error("VALIDATION", ex.getField(), ex.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)

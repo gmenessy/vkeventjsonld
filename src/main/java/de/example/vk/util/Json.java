@@ -78,6 +78,19 @@ public final class Json {
         obj.add(key, value == null ? JsonNull.INSTANCE : new JsonPrimitive(value));
     }
 
+    /** Liest einen String aus einem JsonObject oder gibt null zurück. */
+    public static String optString(JsonObject obj, String key) {
+        if (obj != null && obj.has(key) && !obj.get(key).isJsonNull()) {
+            return obj.get(key).getAsString();
+        }
+        return null;
+    }
+
+    /** Liest einen boolean aus einem JsonObject (Default false). */
+    public static boolean optBool(JsonObject obj, String key) {
+        return obj != null && obj.has(key) && !obj.get(key).isJsonNull() && obj.get(key).getAsBoolean();
+    }
+
     /** Setzt nur, wenn der Wert vorhanden und nicht leer ist. */
     public static void strIfPresent(JsonObject obj, String key, String value) {
         if (value != null && !value.isEmpty()) {

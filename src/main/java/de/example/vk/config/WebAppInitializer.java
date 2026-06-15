@@ -1,5 +1,6 @@
 package de.example.vk.config;
 
+import de.example.vk.servlet.AuthFilter;
 import de.example.vk.servlet.SecurityHeadersFilter;
 import org.springframework.web.servlet.support.AbstractAnnotationConfigDispatcherServletInitializer;
 
@@ -44,6 +45,9 @@ public class WebAppInitializer extends AbstractAnnotationConfigDispatcherServlet
         super.onStartup(servletContext);
         servletContext.addFilter("securityHeaders", new SecurityHeadersFilter())
                 .addMappingForUrlPatterns(EnumSet.allOf(DispatcherType.class), false, "/*");
+        // Schützt Selbsteintrag und Redaktion (Auth + Rollen + CSRF).
+        servletContext.addFilter("auth", new AuthFilter())
+                .addMappingForUrlPatterns(EnumSet.allOf(DispatcherType.class), false, "/api/me/*", "/api/admin/*");
         // Der Mandanten-/VK-Kontext kommt aus ConfigVk (Spring-konfiguriert, ein
         // VK je System) – kein Request-basierter Tenant-Filter noetig.
     }
