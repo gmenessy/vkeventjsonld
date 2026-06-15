@@ -935,9 +935,399 @@
   }
 
   // ===========================================================================
+  // MITGLIEDERBEREICH (Auth, Selbsteintrag, Redaktion)
+  // ===========================================================================
+  var auth = { user: null };
+
+  function sendJson(method, path, body) {
+    return fetch(buildUrl(path), {
+      method: method, credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json", "Accept": "application/json",
+        "X-CSRF-Token": (auth.user && auth.user.csrfToken) || ""
+      },
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (b) {
+        if (!res.ok || b.success === false) {
+          var msg = (b.errors && b.errors[0] && b.errors[0].message) || ("Fehler " + res.status);
+          var err = new Error(msg); err.status = res.status; throw err;
+        }
+        return b.data;
+      });
+    });
+  }
+
+  function loadAuth() {
+    return getJson(API + "/auth/me").then(function (body) {
+      auth.user = body.data || null;
+      renderAuthArea();
+    }).catch(function () { auth.user = null; renderAuthArea(); });
+  }
+
+  function isEditor() {
+    return auth.user && auth.user.roles && auth.user.roles.indexOf("EDITOR") >= 0;
+  }
+  function isAdminRole() {
+    return auth.user && auth.user.roles &&
+      (auth.user.roles.indexOf("EDITOR") >= 0 || auth.user.roles.indexOf("ADMIN") >= 0);
+  }
+
+  function renderAuthArea() {
+    var box = $("vk-auth");
+    clear(box);
+    if (!auth.user) {
+      box.appendChild(el("a", { "class": "vk-btn vk-btn--tonal", href: "#/login", text: "Anmelden" }));
+      return;
+    }
+    box.appendChild(el("a", { "class": "vk-btn vk-btn--text", href: "#/me", text: "Meine Events" }));
+    if (isAdminRole()) {
+      box.appendChild(el("a", { "class": "vk-btn vk-btn--text", href: "#/admin", text: "Redaktion" }));
+    }
+    box.appendChild(el("span", { "class": "vk-auth__name", text: auth.user.displayName }));
+    box.appendChild(el("button", { type: "button", "class": "vk-btn vk-btn--text", text: "Abmelden",
+      onclick: doLogout }));
+  }
+
+  function doLogout() {
+    sendJson("POST", API + "/auth/logout").then(function () {
+      auth.user = null; renderAuthArea(); location.hash = "#/events";
+    }).catch(function () {});
+  }
+
+  var WF_LABELS = {
+    DRAFT: "Entwurf", SUBMITTED: "Eingereicht", IN_REVIEW: "Wird geprüft",
+    CHANGES_REQUESTED: "Bitte überarbeiten", APPROVED: "Freigegeben",
+    PUBLISHED: "Veröffentlicht", REJECTED: "Abgelehnt", CANCELLED: "Abgesagt", ARCHIVED: "Archiviert"
+  };
+  function wfLabel(s) { return WF_LABELS[s] || s; }
+
+  function showMembers() {
+    $("main").hidden = true;
+    var m = $("vk-members");
+    m.hidden = false;
+    m.focus();
+    return m;
+  }
+  function hideMembers() {
+    $("vk-members").hidden = true;
+    $("main").hidden = false;
+  }
+
+  function routeMembers(hash) {
+    var m = showMembers();
+    clear(m);
+    if (hash.indexOf("#/login") === 0) { renderLogin(m); return; }
+    if (hash.indexOf("#/register") === 0) { renderRegister(m); return; }
+    if (!auth.user) { location.hash = "#/login"; return; }
+    if (hash.indexOf("#/admin") === 0) {
+      if (!isAdminRole()) { m.appendChild(el("p", { "class": "vk-empty", text: "Kein Zugriff auf die Redaktion." })); return; }
+      renderReview(m); return;
+    }
+    var editMatch = hash.match(/^#\/me\/([^/]+)\/edit/);
+    if (hash.indexOf("#/me/new") === 0) { renderEventForm(m, null); return; }
+    if (editMatch) { renderEventForm(m, decodeURIComponent(editMatch[1])); return; }
+    renderDashboard(m);
+  }
+
+  function membersHeader(parent, title, backHash) {
+    var head = el("div", { "class": "vk-members__head" }, [
+      el("a", { "class": "vk-btn vk-btn--text", href: backHash || "#/events", text: "← Zurück" }),
+      el("h1", { text: title })
+    ]);
+    parent.appendChild(head);
+  }
+
+  // ---- Login / Registrierung ----
+  function renderLogin(parent) {
+    membersHeader(parent, "Anmelden");
+    var err = el("p", { "class": "vk-error", role: "alert", "aria-live": "assertive" });
+    var email = el("input", { "class": "vk-input", id: "vk-login-email", type: "email", required: "required", autocomplete: "username" });
+    var pw = el("input", { "class": "vk-input", id: "vk-login-pw", type: "password", required: "required", autocomplete: "current-password" });
+    var formEl = el("form", { "class": "vk-form" }, [
+      el("div", { "class": "vk-field" }, [el("label", { "for": "vk-login-email", text: "E-Mail" }), email]),
+      el("div", { "class": "vk-field" }, [el("label", { "for": "vk-login-pw", text: "Passwort" }), pw]),
+      err,
+      el("button", { type: "submit", "class": "vk-btn", text: "Anmelden" }),
+      el("p", {}, [document.createTextNode("Noch kein Konto? "), el("a", { href: "#/register", text: "Registrieren" })]),
+      el("p", { "class": "vk-hint", text: "Demo: redaktion@vk.example / redaktion · nutzer@vk.example / nutzer" })
+    ]);
+    formEl.addEventListener("submit", function (e) {
+      e.preventDefault(); err.textContent = "";
+      sendJson("POST", API + "/auth/login", { email: email.value.trim(), password: pw.value })
+        .then(function (user) {
+          auth.user = user; renderAuthArea();
+          location.hash = isAdminRole() ? "#/admin" : "#/me";
+        }).catch(function (ex) { err.textContent = ex.message; });
+    });
+    parent.appendChild(formEl);
+  }
+
+  function renderRegister(parent) {
+    membersHeader(parent, "Registrieren", "#/login");
+    var err = el("p", { "class": "vk-error", role: "alert", "aria-live": "assertive" });
+    var email = el("input", { "class": "vk-input", id: "vk-reg-email", type: "email", required: "required" });
+    var name = el("input", { "class": "vk-input", id: "vk-reg-name", type: "text", required: "required" });
+    var pw = el("input", { "class": "vk-input", id: "vk-reg-pw", type: "password", required: "required", autocomplete: "new-password" });
+    var formEl = el("form", { "class": "vk-form" }, [
+      el("div", { "class": "vk-field" }, [el("label", { "for": "vk-reg-name", text: "Anzeigename" }), name]),
+      el("div", { "class": "vk-field" }, [el("label", { "for": "vk-reg-email", text: "E-Mail" }), email]),
+      el("div", { "class": "vk-field" }, [el("label", { "for": "vk-reg-pw", text: "Passwort (min. 8 Zeichen)" }), pw]),
+      err,
+      el("button", { type: "submit", "class": "vk-btn", text: "Konto erstellen" })
+    ]);
+    formEl.addEventListener("submit", function (e) {
+      e.preventDefault(); err.textContent = "";
+      sendJson("POST", API + "/auth/register", { email: email.value.trim(), displayName: name.value.trim(), password: pw.value })
+        .then(function (user) { auth.user = user; renderAuthArea(); location.hash = "#/me"; })
+        .catch(function (ex) { err.textContent = ex.message; });
+    });
+    parent.appendChild(formEl);
+  }
+
+  // ---- Selbsteintrags-Dashboard ----
+  function renderDashboard(parent) {
+    membersHeader(parent, "Meine Veranstaltungen");
+    parent.appendChild(el("a", { "class": "vk-btn", href: "#/me/new", text: "+ Neue Veranstaltung" }));
+    var listEl = el("div", { "class": "vk-members__list" });
+    parent.appendChild(listEl);
+    getJson(API + "/me/events").then(function (body) {
+      var items = body.data || [];
+      clear(listEl);
+      if (!items.length) { listEl.appendChild(el("p", { "class": "vk-empty", text: "Noch keine Veranstaltungen." })); return; }
+      items.forEach(function (ev) {
+        var actions = el("div", { "class": "vk-row__actions" });
+        if (ev.workflowStatus === "DRAFT" || ev.workflowStatus === "CHANGES_REQUESTED") {
+          actions.appendChild(el("a", { "class": "vk-btn vk-btn--text", href: "#/me/" + ev.id + "/edit", text: "Bearbeiten" }));
+          actions.appendChild(el("button", { type: "button", "class": "vk-btn vk-btn--tonal", text: "Einreichen",
+            onclick: function () { act("POST", API + "/me/events/" + ev.id + "/submit", "Eingereicht"); } }));
+        }
+        if (ev.workflowStatus === "SUBMITTED") {
+          actions.appendChild(el("button", { type: "button", "class": "vk-btn vk-btn--text", text: "Zurückziehen",
+            onclick: function () { act("POST", API + "/me/events/" + ev.id + "/withdraw", "Zurückgezogen"); } }));
+        }
+        listEl.appendChild(el("div", { "class": "vk-row" }, [
+          el("div", {}, [
+            el("strong", { text: ev.title }),
+            el("span", { "class": "vk-tag", text: wfLabel(ev.workflowStatus) })
+          ]),
+          actions
+        ]));
+      });
+    }).catch(function (ex) { toast(ex.message); });
+
+    function act(method, path, msg) {
+      sendJson(method, path).then(function () { toast(msg); renderDashboard(showMembersClear()); })
+        .catch(function (ex) { toast(ex.message); });
+    }
+  }
+  function showMembersClear() { var m = $("vk-members"); clear(m); return m; }
+
+  // ---- Event-Formular (anlegen/bearbeiten) ----
+  function renderEventForm(parent, publicId) {
+    membersHeader(parent, publicId ? "Veranstaltung bearbeiten" : "Neue Veranstaltung", "#/me");
+    var err = el("p", { "class": "vk-error", role: "alert", "aria-live": "assertive" });
+    var f = {};
+    f.title = inputField("Titel *", "text");
+    f.shortDescription = inputField("Kurzbeschreibung", "text");
+    f.description = textareaField("Beschreibung (einfaches HTML erlaubt)");
+    f.startAt = inputField("Beginn *", "datetime-local");
+    f.endAt = inputField("Ende", "datetime-local");
+    f.mode = selectField("Format *", [["OFFLINE", "Vor Ort"], ["ONLINE", "Online"], ["MIXED", "Hybrid"]]);
+    f.place = placePicker();
+    f.virtualUrl = inputField("Online-Link (bei Online/Hybrid)", "url");
+    f.category = selectField("Kategorie *", categoryOptions());
+    f.organizerName = inputField("Veranstalter *", "text");
+    f.organizerEmail = inputField("Kontakt-E-Mail", "email");
+    f.keywords = inputField("Schlagworte (mit Komma getrennt)", "text");
+    f.free = checkboxField("Kostenlose Veranstaltung");
+
+    var formEl = el("form", { "class": "vk-form" }, [
+      f.title.field, f.shortDescription.field, f.description.field,
+      f.startAt.field, f.endAt.field, f.mode.field, f.place.field, f.virtualUrl.field,
+      f.category.field, f.organizerName.field, f.organizerEmail.field, f.keywords.field, f.free.field,
+      err,
+      el("div", { "class": "vk-form__actions" }, [
+        el("button", { type: "submit", "class": "vk-btn", text: publicId ? "Speichern" : "Entwurf anlegen" })
+      ])
+    ]);
+
+    if (publicId) {
+      getJson(API + "/me/events/" + encodeURIComponent(publicId)).then(function (body) {
+        prefill(f, body.data);
+      }).catch(function (ex) { err.textContent = ex.message; });
+    }
+
+    formEl.addEventListener("submit", function (e) {
+      e.preventDefault(); err.textContent = "";
+      var payload = collect(f);
+      var p = publicId
+        ? sendJson("PUT", API + "/me/events/" + encodeURIComponent(publicId), payload)
+        : sendJson("POST", API + "/me/events", payload);
+      p.then(function () { toast("Gespeichert"); location.hash = "#/me"; })
+        .catch(function (ex) { err.textContent = ex.message; });
+    });
+    parent.appendChild(formEl);
+  }
+
+  function collect(f) {
+    return {
+      title: f.title.input.value.trim(),
+      shortDescription: f.shortDescription.input.value.trim(),
+      description: f.description.input.value,
+      startAt: f.startAt.input.value,
+      endAt: f.endAt.input.value,
+      attendanceMode: f.mode.input.value,
+      place: f.place.getId(),
+      virtualUrl: f.virtualUrl.input.value.trim(),
+      category: f.category.input.value,
+      organizerName: f.organizerName.input.value.trim(),
+      organizerEmail: f.organizerEmail.input.value.trim(),
+      keywords: f.keywords.input.value.split(",").map(function (s) { return s.trim(); }).filter(Boolean),
+      isAccessibleForFree: f.free.input.checked
+    };
+  }
+
+  function prefill(f, ev) {
+    if (!ev) return;
+    f.title.input.value = ev.title || "";
+    f.shortDescription.input.value = ev.shortDescription || "";
+    f.description.input.value = ev.description || "";
+    f.startAt.input.value = isoToLocal(ev.startAt);
+    f.endAt.input.value = isoToLocal(ev.endAt);
+    f.mode.input.value = ev.attendanceMode || "OFFLINE";
+    if (ev.place) f.place.set(ev.place.id, ev.place.name);
+    if (ev.virtualLocation) f.virtualUrl.input.value = ev.virtualLocation.url || "";
+    if (ev.categories && ev.categories.length) f.category.input.value = ev.categories[0].id;
+    if (ev.organizers && ev.organizers.length) {
+      f.organizerName.input.value = ev.organizers[0].displayName || "";
+      f.organizerEmail.input.value = ev.organizers[0].email || "";
+    }
+    if (ev.keywords) f.keywords.input.value = ev.keywords.join(", ");
+    f.free.input.checked = !!ev.isAccessibleForFree;
+  }
+
+  function isoToLocal(iso) { return iso ? String(iso).slice(0, 16) : ""; }
+
+  // ---- Redaktion (Review-Queue) ----
+  function renderReview(parent) {
+    membersHeader(parent, "Redaktion – Prüfung");
+    var bar = el("div", { "class": "vk-chip-row" });
+    ["SUBMITTED", "APPROVED", "PUBLISHED", "CHANGES_REQUESTED"].forEach(function (s) {
+      bar.appendChild(el("button", { type: "button", "class": "vk-chip", text: wfLabel(s),
+        onclick: function () { loadQueue(s); } }));
+    });
+    parent.appendChild(bar);
+    parent.appendChild(el("a", { "class": "vk-btn vk-btn--text", href: API + "/admin/export/events?format=csv",
+      target: "_blank", rel: "noopener", text: "CSV-Export" }));
+    var listEl = el("div", { "class": "vk-members__list" });
+    parent.appendChild(listEl);
+    loadQueue("SUBMITTED");
+
+    function loadQueue(status) {
+      getJson(API + "/admin/events", { status: status }).then(function (body) {
+        var items = body.data || [];
+        clear(listEl);
+        listEl.appendChild(el("p", { "class": "vk-result-count", text: items.length + " im Status „" + wfLabel(status) + "“" }));
+        items.forEach(function (ev) {
+          var actions = el("div", { "class": "vk-row__actions" });
+          if (status === "SUBMITTED") {
+            actions.appendChild(reviewBtn("Freigeben", "approve", ev.id, status, "vk-btn--tonal"));
+            actions.appendChild(reviewBtn("Änderung erbitten", "request-changes", ev.id, status));
+            actions.appendChild(reviewBtn("Ablehnen", "reject", ev.id, status));
+          }
+          if (status === "APPROVED" || status === "SUBMITTED") {
+            actions.appendChild(reviewBtn("Veröffentlichen", "publish", ev.id, status, "vk-btn"));
+          }
+          listEl.appendChild(el("div", { "class": "vk-row" }, [
+            el("div", {}, [el("strong", { text: ev.title }),
+              el("span", { "class": "vk-tag", text: wfLabel(ev.workflowStatus) }),
+              ev.creator ? el("span", { "class": "vk-hint", text: "von " + ev.creator }) : null]),
+            actions
+          ]));
+        });
+      }).catch(function (ex) { toast(ex.message); });
+    }
+    function reviewBtn(label, action, id, status, cls) {
+      return el("button", { type: "button", "class": "vk-btn vk-btn--text " + (cls || ""), text: label,
+        onclick: function () {
+          sendJson("POST", API + "/admin/events/" + id + "/" + action)
+            .then(function () { toast(label + " ✓"); loadQueue(status); })
+            .catch(function (ex) { toast(ex.message); });
+        } });
+    }
+  }
+
+  // ---- kleine Formular-Bausteine ----
+  function inputField(label, type) {
+    var id = "f-" + Math.random().toString(36).slice(2, 8);
+    var input = el("input", { "class": "vk-input", id: id, type: type });
+    return { field: el("div", { "class": "vk-field" }, [el("label", { "for": id, text: label }), input]), input: input };
+  }
+  function textareaField(label) {
+    var id = "f-" + Math.random().toString(36).slice(2, 8);
+    var input = el("textarea", { "class": "vk-input", id: id, rows: "4" });
+    return { field: el("div", { "class": "vk-field" }, [el("label", { "for": id, text: label }), input]), input: input };
+  }
+  function selectField(label, options) {
+    var id = "f-" + Math.random().toString(36).slice(2, 8);
+    var sel = el("select", { "class": "vk-select", id: id });
+    options.forEach(function (o) { sel.appendChild(el("option", { value: o[0], text: o[1] })); });
+    return { field: el("div", { "class": "vk-field" }, [el("label", { "for": id, text: label }), sel]), input: sel };
+  }
+  function checkboxField(label) {
+    var input = el("input", { type: "checkbox" });
+    return { field: el("label", { "class": "vk-switch" }, [input, document.createTextNode(label)]), input: input };
+  }
+  function categoryOptions() {
+    var opts = [["", "– bitte wählen –"]];
+    (function walk(cats) {
+      (cats || []).forEach(function (c) { opts.push([c.id, c.name]); if (c.children) walk(c.children); });
+    })(categories);
+    return opts;
+  }
+  function placePicker() {
+    var id = "f-" + Math.random().toString(36).slice(2, 8);
+    var selectedId = "";
+    var input = el("input", { "class": "vk-input", id: id, type: "text", autocomplete: "off",
+      placeholder: "Ort suchen … (bei Vor-Ort/Hybrid)" });
+    var list = el("ul", { "class": "vk-combo__list", hidden: "hidden" });
+    var timer = null;
+    input.addEventListener("input", function () {
+      selectedId = "";
+      var v = input.value.trim();
+      if (v.length < 2) { list.hidden = true; return; }
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        getJson(API + "/places", { q: v }).then(function (body) {
+          clear(list);
+          (body.data || []).forEach(function (it) {
+            var opt = el("li", { "class": "vk-option", text: it.name + (it.locality ? " · " + it.locality : "") });
+            opt.addEventListener("mousedown", function (e) { e.preventDefault(); });
+            opt.addEventListener("click", function () { selectedId = it.id; input.value = it.name; list.hidden = true; });
+            list.appendChild(opt);
+          });
+          list.hidden = (body.data || []).length === 0;
+        }).catch(function () { list.hidden = true; });
+      }, 250);
+    });
+    input.addEventListener("blur", function () { setTimeout(function () { list.hidden = true; }, 150); });
+    var field = el("div", { "class": "vk-field vk-combo" }, [
+      el("label", { "for": id, text: "Ort" }), input, list]);
+    return { field: field, getId: function () { return selectedId; },
+      set: function (pid, name) { selectedId = pid; input.value = name || ""; } };
+  }
+
+  // ===========================================================================
   // ROUTER
   // ===========================================================================
   function handleRoute() {
+    var hash = location.hash || "";
+    if (/^#\/(login|register|me|admin)\b/.test(hash)) {
+      routeMembers(hash);
+      return;
+    }
+    hideMembers();
     var id = currentDetailId();
     if (id) {
       openDetail(id);
@@ -1001,8 +1391,10 @@
       handleRoute();
     });
 
-    // Bootstrap: erst VK-Kontext (nur Anzeige), dann Kategorien, dann Filter aus URL + Suche.
-    loadContext().then(loadCategories).then(function () {
+    // Bootstrap: VK-Kontext, Kategorien und Anmeldestatus laden, dann routen.
+    Promise.all([loadAuth(), loadContext().then(loadCategories)]).then(function () {
+      var hash = location.hash || "";
+      if (/^#\/(login|register|me|admin)\b/.test(hash)) { handleRoute(); return; }
       applyHashToState();
       syncFilterInputs();
       var id = currentDetailId();

@@ -27,6 +27,7 @@
       <button class="vk-search__interpret" id="vk-q-interpret" type="button"
               aria-label="Eingabe intelligent in Filter umwandeln" title="Intelligente Suche">✨</button>
     </form>
+    <div class="vk-topbar__auth" id="vk-auth"><!-- per JS: Anmelden / Benutzermenü --></div>
   </header>
 
   <main class="vk-layout" id="main">
@@ -71,6 +72,9 @@
       <article class="vk-detail__content" id="vk-detail-content" tabindex="-1" hidden></article>
     </section>
   </main>
+
+  <!-- Mitgliederbereich (Login, Selbsteintrag, Redaktion) – überlagert die Suche -->
+  <section class="vk-members" id="vk-members" tabindex="-1" aria-label="Mitgliederbereich" hidden></section>
 
   <div class="vk-toast" id="vk-toast" role="status" aria-live="polite" hidden></div>
 

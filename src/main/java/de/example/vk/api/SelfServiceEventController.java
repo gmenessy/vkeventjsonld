@@ -30,6 +30,11 @@ public class SelfServiceEventController {
         return Json.ok(service.listOwn());
     }
 
+    @GetMapping("/{publicId}")
+    public JsonObject getOne(@PathVariable String publicId) {
+        return Json.ok(service.getForEdit(publicId));
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public JsonObject create(@RequestBody JsonObject body) {

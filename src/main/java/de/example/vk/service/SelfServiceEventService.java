@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import de.example.vk.repository.ApprovalRepository;
+import de.example.vk.repository.EventRepository;
 import de.example.vk.repository.EventWriteRepository;
 import de.example.vk.repository.EventWriteRepository.EventInput;
 import de.example.vk.util.CurrentUser;
@@ -24,14 +25,16 @@ import java.util.List;
 public class SelfServiceEventService {
 
     private final EventWriteRepository writeRepository;
+    private final EventRepository eventRepository;
     private final ApprovalRepository approvalRepository;
     private final EventValidator validator;
     private final AuditService auditService;
 
-    public SelfServiceEventService(EventWriteRepository writeRepository,
+    public SelfServiceEventService(EventWriteRepository writeRepository, EventRepository eventRepository,
                                    ApprovalRepository approvalRepository,
                                    EventValidator validator, AuditService auditService) {
         this.writeRepository = writeRepository;
+        this.eventRepository = eventRepository;
         this.approvalRepository = approvalRepository;
         this.validator = validator;
         this.auditService = auditService;
@@ -39,6 +42,16 @@ public class SelfServiceEventService {
 
     public JsonArray listOwn() {
         return writeRepository.listOwn(CurrentUser.requireUserId());
+    }
+
+    /** Eigenes Event zum Bearbeiten (prüft Besitz). */
+    public JsonObject getForEdit(String publicId) {
+        long userId = CurrentUser.requireUserId();
+        String[] status = new String[1];
+        if (writeRepository.findOwnIdAndStatus(publicId, userId, status) == null) {
+            throw new NotFoundException("Veranstaltung nicht gefunden: " + publicId);
+        }
+        return eventRepository.findByPublicId(publicId, false);
     }
 
     @Transactional
