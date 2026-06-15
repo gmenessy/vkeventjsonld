@@ -1192,7 +1192,7 @@
       ])
     ]);
 
-    var cockpit = buildCockpit(snapshot);
+    var cockpit = buildCockpit(snapshot, applySuggestion);
     var restoreBar = el("div", {});
     var editor = el("div", { "class": "vk-editor" }, [
       el("div", {}, [restoreBar, formEl]), cockpit.element
@@ -1206,6 +1206,26 @@
       var s = collect(f);
       s.placeLabel = f.place.getLabel();
       return s;
+    }
+
+    // Übernimmt GenAI-Vorschläge: Kategorie nur, wenn noch leer; Schlagworte ergänzend.
+    function applySuggestion(sg) {
+      var changed = false;
+      if (sg.category && !f.category.input.value) {
+        var opt = f.category.input.querySelector('option[value="' + sg.category + '"]');
+        if (opt) { f.category.input.value = sg.category; changed = true; }
+      }
+      if (sg.keywords && sg.keywords.length) {
+        var cur = f.keywords.input.value.split(",").map(function (k) { return k.trim(); }).filter(Boolean);
+        var seen = {};
+        cur.forEach(function (k) { seen[k.toLowerCase()] = true; });
+        sg.keywords.forEach(function (k) {
+          if (k && !seen[k.toLowerCase()]) { cur.push(k); seen[k.toLowerCase()] = true; changed = true; }
+        });
+        f.keywords.input.value = cur.join(", ");
+      }
+      if (changed) { update(); formEl.dispatchEvent(new Event("input", { bubbles: true })); }
+      return changed;
     }
 
     // Autosave (lokal, Spec 19.6)
@@ -1276,8 +1296,8 @@
     ]));
   }
 
-  // ---- Cockpit: Qualitätsampel + Smart Hints + Live-Preview + GenAI-Alt-Text ----
-  function buildCockpit(getSnapshot) {
+  // ---- Cockpit: Qualitätsampel + Smart Hints + Live-Preview + GenAI-Assistenz ----
+  function buildCockpit(getSnapshot, applySuggestion) {
     var ampel = el("div", { "class": "vk-ampel" });
     var ampelText = el("span", { "class": "vk-ampel__text" });
     var checklist = el("ul", { "class": "vk-checklist" });
@@ -1288,6 +1308,7 @@
       el("div", { "class": "vk-ampel-row" }, [ampel, ampelText]),
       checklist,
       el("h3", { text: "Hinweise" }), hints,
+      buildSuggestAssist(getSnapshot, applySuggestion),
       buildAltTextAssist(getSnapshot),
       el("h3", { text: "Live-Vorschau" }), preview
     ]);
@@ -1431,6 +1452,33 @@
       el("h3", { text: "Bild-Alternativtext" }),
       el("p", { "class": "vk-hint", text: "Vorschlag für ein barrierefreies Veranstaltungsbild (WCAG 1.1.1)." }),
       btn, out, copyBtn, status
+    ]);
+  }
+
+  // ---- GenAI-Assistenz (Schreibzeit): Kategorie- & Schlagwort-Vorschlag ----
+  function buildSuggestAssist(getSnapshot, applySuggestion) {
+    var status = el("span", { "class": "vk-hint", "aria-live": "polite" });
+    var btn = el("button", { type: "button", "class": "vk-btn vk-btn--text", text: "✨ Kategorie & Schlagworte" });
+    btn.addEventListener("click", function () {
+      var s = getSnapshot ? getSnapshot() : {};
+      if ((!s.title || !s.title.trim()) && (!s.description || !s.description.trim())) {
+        status.textContent = "Bitte zuerst Titel oder Beschreibung eingeben."; return;
+      }
+      btn.disabled = true; status.textContent = "Wird analysiert …";
+      sendJson("POST", API + "/me/assist/suggest", { title: s.title || "", description: s.description || "" })
+        .then(function (data) {
+          var changed = applySuggestion ? applySuggestion(data) : false;
+          var n = (data.keywords || []).length;
+          status.textContent = changed
+            ? ("Übernommen: " + (data.category ? "Kategorie + " : "") + n + " Schlagwort-Vorschläge.")
+            : "Keine neuen Vorschläge – Felder sind bereits gut gefüllt.";
+        }).catch(function (ex) { status.textContent = ex.message; })
+        .then(function () { btn.disabled = false; });
+    });
+    return el("div", { "class": "vk-assist vk-assist--alt" }, [
+      el("h3", { text: "Vorschläge" }),
+      el("p", { "class": "vk-hint", text: "Schlägt Kategorie und Schlagworte aus Titel/Beschreibung vor." }),
+      btn, status
     ]);
   }
 

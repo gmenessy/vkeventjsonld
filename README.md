@@ -134,6 +134,7 @@ Demo-Datensatz beim Start automatisch an.
 | GET | `/api/admin/export/events?format=csv` | CSV-Export (Redaktion) |
 | POST | `/api/me/assist/alt-text` | GenAI: Bild-Alt-Text-Vorschlag (angemeldet) |
 | POST | `/api/me/assist/simplify` | GenAI: „Einfache Sprache" (angemeldet) |
+| POST | `/api/me/assist/suggest` | GenAI: Kategorie- & Schlagwort-Vorschlag (angemeldet) |
 
 Alle Endpunkte sind mandantengescoped; der Kontext kommt aus `ConfigVk`
 (serverseitig, je System konfiguriert), nicht aus dem Request.
@@ -181,6 +182,10 @@ Der Kontext-Root (`/`) wird über ein Velocity-Template (`templates/index.vm`,
   mit gesetztem `ANTHROPIC_API_KEY` übernimmt Claude mit **hartem Fallback** auf
   die Heuristik (`FallbackGenAiProvider`) – der Editor bleibt bei Modellausfall/
   Timeout funktionsfähig.
+- GenAI-Editor-Vorschläge: **Kategorie & Schlagworte** aus Titel/Beschreibung
+  (`POST /api/me/assist/suggest`, „✨"-Button im Cockpit). Regelbasiert
+  (`EditorSuggestService`, derselbe Parser wie die NL-Suche) – null Latenz/Kosten,
+  füllt nur leere Felder bzw. ergänzt Schlagworte und überschreibt nichts.
 - A11y-Härtung (Sprint 2): Ort-/Veranstalter-Autocomplete als vollwertiges
   ARIA-1.2-Combobox (Pfeiltasten, `aria-activedescendant`, Enter/Escape, Home/End);
   Filter als gelabelte Toggle-Gruppen (`role="group"`); mobiler Filter-Drawer als
