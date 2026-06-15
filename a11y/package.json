@@ -1,0 +1,11 @@
+{
+  "name": "vk-a11y",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Accessibility-Gate (axe-core + Playwright) für die VK-SPA",
+  "dependencies": {
+    "@axe-core/playwright": "^4.10.0",
+    "playwright": "^1.47.0"
+  }
+}

@@ -73,6 +73,18 @@ unter VK 3 nicht abrufbar, und ohne Kontext schlägt jede Suche fehl. Live
 verifiziert: dasselbe WAR liefert mit `-Dvk.mandantId=2 -Dvk.vkId=3` einen
 anderen, isolierten Kalender.
 
+## CI & Accessibility-Gate
+
+`.github/workflows/ci.yml` läuft bei Push/PR und hat zwei Jobs:
+
+- **build-test:** `mvn test` (JUnit, inkl. Mandanten-Isolation, Suchperformance,
+  Sicherheits-Utils, NL-Parser, CSV-Parser).
+- **a11y:** startet die App (Jetty mit H2-Demodaten) und scannt Listen- und
+  Detailansicht mit **axe-core** (Playwright/Chromium) gegen WCAG 2.1 A/AA. Der
+  Build schlägt fehl, sobald ein Verstoß der Schwere *serious* oder *critical*
+  auftritt – so kann die in den A11y-Sprints erreichte Barrierefreiheit nicht
+  unbemerkt regredieren. Harness unter `a11y/` (`npm install` + `axe-scan.mjs`).
+
 ## Bauen, Testen, Starten
 
 Voraussetzung: Java 8+ (gebaut mit `release 8`), Maven.

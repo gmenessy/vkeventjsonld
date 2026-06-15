@@ -5,3 +5,6 @@ target/
 *.iml
 .vscode/
 .DS_Store
+a11y/node_modules/
+a11y/package-lock.json
+*.log
