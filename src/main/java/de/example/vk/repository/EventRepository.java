@@ -251,8 +251,14 @@ public class EventRepository {
     // ------------------------------------------------------------------
 
     public JsonObject findPublishedByPublicId(String publicId) {
-        // Isolation: Detailabruf nur innerhalb des aktuellen Mandanten/VK, auch wenn
-        // die (global eindeutige) PUBLIC_ID bekannt waere.
+        return findByPublicId(publicId, true);
+    }
+
+    /**
+     * Detailabruf, tenant-gescoped. {@code publishedOnly=false} liefert auch Entwürfe –
+     * nur für die Redaktion (über AuthFilter geschützt) zu verwenden.
+     */
+    public JsonObject findByPublicId(String publicId, boolean publishedOnly) {
         MapSqlParameterSource p = new MapSqlParameterSource("pid", publicId)
                 .addValue("mandant", ConfigVk.requireMandant())
                 .addValue("vk", ConfigVk.requireVkId());
@@ -268,7 +274,7 @@ public class EventRepository {
               + "LEFT JOIN VK_ADDRESS a ON a.ID = p.ADDRESS_ID "
               + "LEFT JOIN VK_VIRTUAL_LOCATION v ON v.ID = e.VIRTUAL_LOCATION_ID "
               + "WHERE e.PUBLIC_ID = :pid AND e.MANDANT_ID = :mandant AND e.VK_ID = :vk "
-              + "  AND e.WORKFLOW_STATUS = 'PUBLISHED'",
+              + (publishedOnly ? "  AND e.WORKFLOW_STATUS = 'PUBLISHED'" : ""),
                 p, DETAIL_MAPPER);
 
         if (events.isEmpty()) {
