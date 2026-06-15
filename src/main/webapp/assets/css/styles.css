@@ -434,6 +434,16 @@ a { color: var(--vk-primary); }
   border-radius: var(--vk-radius-md); padding: var(--vk-space-2); }
 .vk-card--preview { box-shadow: none; }
 
+/* GenAI-Assistenz (Schreibzeit): Einfache Sprache / Alt-Text */
+.vk-assist { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vk-space-2);
+  margin-top: var(--vk-space-2); }
+.vk-assist--alt { display: block; }
+.vk-assist--alt .vk-btn { margin-top: var(--vk-space-2); }
+.vk-assist__out { background: var(--vk-surface); border: 1px solid var(--vk-outline-variant);
+  border-radius: var(--vk-radius-sm); padding: var(--vk-space-2) var(--vk-space-3);
+  margin: var(--vk-space-2) 0; font-size: .9rem; }
+.vk-assist__out:focus-visible { outline: var(--vk-focus-ring); outline-offset: 2px; }
+
 @media (max-width: 1199px) {
   .vk-editor { grid-template-columns: minmax(0, 1fr); }
   .vk-cockpit { position: static; }

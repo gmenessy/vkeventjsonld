@@ -1177,6 +1177,9 @@
     f.keywords = inputField("Schlagworte (mit Komma getrennt)", "text");
     f.free = checkboxField("Kostenlose Veranstaltung");
 
+    // GenAI-Assistenz (Schreibzeit): „Einfache Sprache" direkt an der Beschreibung
+    addSimplifyControl(f.description);
+
     var saveState = el("span", { "class": "vk-hint", "aria-live": "polite" });
     var formEl = el("form", { "class": "vk-form" }, [
       f.title.field, f.shortDescription.field, f.description.field,
@@ -1189,7 +1192,7 @@
       ])
     ]);
 
-    var cockpit = buildCockpit();
+    var cockpit = buildCockpit(snapshot);
     var restoreBar = el("div", {});
     var editor = el("div", { "class": "vk-editor" }, [
       el("div", {}, [restoreBar, formEl]), cockpit.element
@@ -1273,8 +1276,8 @@
     ]));
   }
 
-  // ---- Cockpit: Qualitätsampel + Smart Hints + Live-Preview ----
-  function buildCockpit() {
+  // ---- Cockpit: Qualitätsampel + Smart Hints + Live-Preview + GenAI-Alt-Text ----
+  function buildCockpit(getSnapshot) {
     var ampel = el("div", { "class": "vk-ampel" });
     var ampelText = el("span", { "class": "vk-ampel__text" });
     var checklist = el("ul", { "class": "vk-checklist" });
@@ -1285,6 +1288,7 @@
       el("div", { "class": "vk-ampel-row" }, [ampel, ampelText]),
       checklist,
       el("h3", { text: "Hinweise" }), hints,
+      buildAltTextAssist(getSnapshot),
       el("h3", { text: "Live-Vorschau" }), preview
     ]);
 
@@ -1366,6 +1370,89 @@
       tags
     ]);
     target.appendChild(el("div", { "class": "vk-card vk-card--preview" }, [dateBox, body]));
+  }
+
+  // ---- GenAI-Assistenz (Schreibzeit): „Einfache Sprache" ----
+  function addSimplifyControl(descField) {
+    var ta = descField.input;
+    var status = el("span", { "class": "vk-hint", "aria-live": "polite" });
+    var undoBtn = el("button", { type: "button", "class": "vk-btn vk-btn--text", text: "Rückgängig", hidden: "hidden" });
+    var btn = el("button", { type: "button", "class": "vk-btn vk-btn--text", text: "✨ Einfache Sprache" });
+    var prev = null;
+    btn.addEventListener("click", function () {
+      var text = ta.value.trim();
+      if (!text) { status.textContent = "Bitte zuerst eine Beschreibung eingeben."; return; }
+      btn.disabled = true; status.textContent = "Wird umgeschrieben …";
+      sendJson("POST", API + "/me/assist/simplify", { text: text }).then(function (data) {
+        prev = ta.value;
+        ta.value = data.suggestion || ta.value;
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+        undoBtn.hidden = false;
+        status.textContent = "In Einfache Sprache umgeschrieben" + providerSuffix(data.provider) + ".";
+      }).catch(function (ex) { status.textContent = ex.message; })
+        .then(function () { btn.disabled = false; });
+    });
+    undoBtn.addEventListener("click", function () {
+      if (prev != null) {
+        ta.value = prev; prev = null; undoBtn.hidden = true;
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+        status.textContent = "Wiederhergestellt.";
+      }
+    });
+    descField.field.appendChild(el("div", { "class": "vk-assist" }, [btn, undoBtn, status]));
+  }
+
+  // ---- GenAI-Assistenz (Schreibzeit): Bild-Alt-Text-Vorschlag ----
+  function buildAltTextAssist(getSnapshot) {
+    var status = el("span", { "class": "vk-hint", "aria-live": "polite" });
+    var out = el("p", { "class": "vk-assist__out", hidden: "hidden", tabindex: "-1" });
+    var copyBtn = el("button", { type: "button", "class": "vk-btn vk-btn--text", text: "Kopieren", hidden: "hidden" });
+    var btn = el("button", { type: "button", "class": "vk-btn vk-btn--text", text: "✨ Alt-Text vorschlagen" });
+    btn.addEventListener("click", function () {
+      var s = getSnapshot ? getSnapshot() : {};
+      if (!s.title || !s.title.trim()) { status.textContent = "Bitte zuerst einen Titel eingeben."; return; }
+      btn.disabled = true; status.textContent = "Wird erstellt …";
+      sendJson("POST", API + "/me/assist/alt-text", {
+        title: s.title, categoryName: s.category ? findCategoryName(s.category) : null,
+        placeLabel: s.placeLabel || null, shortDescription: s.shortDescription || null
+      }).then(function (data) {
+        out.textContent = data.suggestion || "";
+        out.hidden = !data.suggestion; copyBtn.hidden = !data.suggestion;
+        status.textContent = data.suggestion ? "Vorschlag erstellt" + providerSuffix(data.provider) + "." : "Kein Vorschlag möglich.";
+        if (data.suggestion) out.focus();
+      }).catch(function (ex) { status.textContent = ex.message; })
+        .then(function () { btn.disabled = false; });
+    });
+    copyBtn.addEventListener("click", function () {
+      copyText(out.textContent).then(function () { status.textContent = "In die Zwischenablage kopiert."; },
+        function () { status.textContent = "Kopieren nicht möglich – bitte manuell markieren."; });
+    });
+    return el("div", { "class": "vk-assist vk-assist--alt" }, [
+      el("h3", { text: "Bild-Alternativtext" }),
+      el("p", { "class": "vk-hint", text: "Vorschlag für ein barrierefreies Veranstaltungsbild (WCAG 1.1.1)." }),
+      btn, out, copyBtn, status
+    ]);
+  }
+
+  function providerSuffix(provider) {
+    return provider === "claude" ? " (KI)" : "";
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.setAttribute("readonly", "");
+        ta.style.position = "absolute"; ta.style.left = "-9999px";
+        document.body.appendChild(ta); ta.select();
+        var ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        ok ? resolve() : reject();
+      } catch (e) { reject(e); }
+    });
   }
 
   function collect(f) {

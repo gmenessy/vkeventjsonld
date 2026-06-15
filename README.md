@@ -114,6 +114,9 @@ Demo-Datensatz beim Start automatisch an.
 | `VK_VK_ID` | `1` | VK dieses Systems (`vk.vkId`) |
 | `VK_BASE_URL` | leer | Basis-URL für JSON-LD `@id`/`url` |
 | `VK_SEARCH_ORACLE_TEXT` | `false` | Oracle-Text-Volltextsuche aktivieren |
+| `ANTHROPIC_API_KEY` | leer | Aktiviert Claude für die Redaktions-Assistenz (sonst Heuristik) |
+| `VK_GENAI_PROVIDER` | `auto` | `auto` (Claude wenn Key da), `heuristik` (erzwingt regelbasiert) |
+| `VK_GENAI_MODEL` | `claude-haiku-4-5` | Claude-Modell für die Assistenz |
 
 ## Öffentliche API
 
@@ -129,6 +132,8 @@ Demo-Datensatz beim Start automatisch an.
 | POST/GET | `/api/admin/imports` | CSV-/JSON-Import (Redaktion): Job anlegen, Jobs listen |
 | GET | `/api/admin/imports/{id}` | Import-Job mit Zeilen-Ergebnissen |
 | GET | `/api/admin/export/events?format=csv` | CSV-Export (Redaktion) |
+| POST | `/api/me/assist/alt-text` | GenAI: Bild-Alt-Text-Vorschlag (angemeldet) |
+| POST | `/api/me/assist/simplify` | GenAI: „Einfache Sprache" (angemeldet) |
 
 Alle Endpunkte sind mandantengescoped; der Kontext kommt aus `ConfigVk`
 (serverseitig, je System konfiguriert), nicht aus dem Request.
@@ -169,6 +174,13 @@ Der Kontext-Root (`/`) wird über ein Velocity-Template (`templates/index.vm`,
   (`GET /api/search/parse`, „✨"-Button). Regelbasiert (deutsch), **null Latenz/
   Kosten** im Hot-Path und zugleich harter Fallback; ein LLM-Parser (z. B. Claude
   Haiku) kann `NlQueryParser.parse` later als Drop-in ersetzen.
+- GenAI-Redaktions-Assistenz (Schreibzeit, **nie** im Such-Hot-Path):
+  **Alt-Text-Vorschlag** (WCAG 1.1.1) und **„Einfache Sprache"** im Editor
+  (`POST /api/me/assist/alt-text`, `…/simplify`). Austauschbarer Anbieter
+  (`GenAiProvider`): Standard ist eine regelbasierte, kostenfreie Heuristik;
+  mit gesetztem `ANTHROPIC_API_KEY` übernimmt Claude mit **hartem Fallback** auf
+  die Heuristik (`FallbackGenAiProvider`) – der Editor bleibt bei Modellausfall/
+  Timeout funktionsfähig.
 - A11y-Härtung (Sprint 2): Ort-/Veranstalter-Autocomplete als vollwertiges
   ARIA-1.2-Combobox (Pfeiltasten, `aria-activedescendant`, Enter/Escape, Home/End);
   Filter als gelabelte Toggle-Gruppen (`role="group"`); mobiler Filter-Drawer als
@@ -180,8 +192,24 @@ Der Kontext-Root (`/`) wird über ein Velocity-Template (`templates/index.vm`,
   zurück zur Karte; `scroll-margin` gegen „Focus Not Obscured" (WCAG 2.2 / 2.4.11);
   `aria-busy` während der Suche.
 
+## Redaktion & Selbsteintrag (umgesetzt)
+
+Aufbauend auf dem öffentlichen Teil sind inzwischen umgesetzt:
+
+- **Auth/Login** (Session-basiert, PBKDF2-Passwörter, CSRF-Token bei Schreib-
+  zugriffen) mit `AuthFilter` für `/api/me/*` (angemeldet) und `/api/admin/*`
+  (Rolle EDITOR/ADMIN).
+- **Selbsteintrag** für angemeldete Nutzer und **redaktioneller Workflow**
+  (Entwurf → Einreichen → Review-Queue → Freigeben/Änderungen erbitten →
+  Veröffentlichen), inkl. Audit.
+- **Editor-Cockpit** (Spec Kap. 19): Live-Vorschau, vierstufige Qualitätsampel,
+  regelbasierte Smart Hints und lokales Autosave mit Wiederherstellen.
+- **GenAI-Assistenz** im Editor: Alt-Text-Vorschlag und „Einfache Sprache"
+  (siehe oben), austauschbarer Anbieter mit hartem Fallback.
+- **Import/Export** (CSV/JSON) im Redaktionsbereich.
+
 ## Noch nicht umgesetzt (Spezifikation, spätere Sprints)
 
-Selbsteintrag, redaktioneller Editor, Auth/Login, Import/Export und
-Versionierung sind in der Spezifikation beschrieben, aber noch nicht Teil dieser
-Implementierung. Schema und API-Struktur sind darauf vorbereitet.
+Vollständige Versionierung/Historie der Events ist in der Spezifikation
+beschrieben, aber noch nicht Teil dieser Implementierung. Schema und
+API-Struktur sind darauf vorbereitet.
