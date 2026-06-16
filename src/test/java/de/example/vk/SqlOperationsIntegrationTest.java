@@ -74,7 +74,7 @@ public class SqlOperationsIntegrationTest {
         ImportRepository importRepo = new ImportRepository(jdbc);
 
         selfService = new SelfServiceEventService(writeRepo, eventRepo, approvalRepo, validator, mapper, audit);
-        adminService = new AdminEventService(adminRepo, eventRepo, approvalRepo, audit);
+        adminService = new AdminEventService(adminRepo, eventRepo, approvalRepo, audit, writeRepo, mapper, validator);
         exportService = new ExportService(jdbc);
         importService = new ImportService(importRepo, writeRepo, approvalRepo, mapper, validator, audit);
     }
@@ -191,6 +191,25 @@ public class SqlOperationsIntegrationTest {
 
         // AUDIT: es wurden Einträge geschrieben (create/update/submit/approve/publish)
         assertTrue("Audit-Log sollte gewachsen sein", auditCount() > auditBefore);
+
+        // VERSIONS-HISTORIE: listen, Snapshot lesen, wiederherstellen
+        JsonArray versions = adminService.versions(publicId);
+        assertEquals("publish sollte genau eine Version erzeugt haben", 1, versions.size());
+        int firstVersion = versions.get(0).getAsJsonObject().get("versionNo").getAsInt();
+        JsonObject snap = adminService.versionSnapshot(publicId, firstVersion);
+        assertEquals("SQL-Op Test Galakonzert", str(snap, "title"));
+
+        adminService.restoreVersion(publicId, firstVersion);
+        assertEquals("restore sollte eine zweite Version anlegen", 2, adminService.versions(publicId).size());
+        JsonObject afterRestore = eventRepo.findByPublicId(publicId, false);
+        assertEquals("SQL-Op Test Galakonzert", str(afterRestore, "title"));
+        // Version 1 wurde beim Publish (nach dem Update) erstellt -> Stand: 1 Offer/Performer
+        assertEquals(1, afterRestore.getAsJsonArray("offers").size());
+        assertEquals(1, afterRestore.getAsJsonArray("performers").size());
+
+        // AUDIT-TRAIL lesbar und tenant-gescoped
+        JsonArray trail = adminService.auditTrail(50);
+        assertTrue("Audit-Trail sollte Einträge liefern", trail.size() > 0);
     }
 
     @Test

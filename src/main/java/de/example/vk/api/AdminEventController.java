@@ -68,4 +68,20 @@ public class AdminEventController {
         service.archive(publicId);
         return Json.ok(JsonNull.INSTANCE);
     }
+
+    @GetMapping("/{publicId}/versions")
+    public JsonObject versions(@PathVariable String publicId) {
+        return Json.ok(service.versions(publicId));
+    }
+
+    @GetMapping("/{publicId}/versions/{versionNo}")
+    public JsonObject version(@PathVariable String publicId, @PathVariable int versionNo) {
+        return Json.ok(service.versionSnapshot(publicId, versionNo));
+    }
+
+    @PostMapping("/{publicId}/versions/{versionNo}/restore")
+    public JsonObject restore(@PathVariable String publicId, @PathVariable int versionNo) {
+        service.restoreVersion(publicId, versionNo);
+        return Json.ok(JsonNull.INSTANCE);
+    }
 }

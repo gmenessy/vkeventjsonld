@@ -138,6 +138,10 @@ Demo-Datensatz beim Start automatisch an.
 | POST | `/api/me/assist/simplify` | GenAI: „Einfache Sprache" (angemeldet) |
 | POST | `/api/me/assist/suggest` | GenAI: Kategorie- & Schlagwort-Vorschlag (angemeldet) |
 | POST | `/api/me/uploads` | Datei-Upload (Bild/Dokument) → absolute URL (angemeldet) |
+| GET | `/api/admin/events/{id}/versions` | Versionsliste (Redaktion) |
+| GET | `/api/admin/events/{id}/versions/{no}` | Versions-Snapshot (Redaktion) |
+| POST | `/api/admin/events/{id}/versions/{no}/restore` | Version wiederherstellen (Redaktion) |
+| GET | `/api/admin/audit` | Audit-Trail der Event-Aktionen (Redaktion, tenant-gescoped) |
 
 Alle Endpunkte sind mandantengescoped; der Kontext kommt aus `ConfigVk`
 (serverseitig, je System konfiguriert), nicht aus dem Request.
@@ -239,10 +243,19 @@ Aufbauend auf dem öffentlichen Teil sind inzwischen umgesetzt:
   Beziehungen ersetzen, Selbsteintrags- und Redaktions-Workflow inkl.
   Versions-Snapshot, Export, CSV-/JSON-Import, Audit, Kategorie-Baum).
 
+## Versionierung & Audit (umgesetzt)
+
+- **Versions-Historie:** Beim Veröffentlichen (und bei jeder Wiederherstellung)
+  wird ein Snapshot geschrieben. Die Redaktion kann die Versionsliste einsehen,
+  einen Snapshot abrufen und eine frühere Fassung **wiederherstellen** (Inhalt
+  wird zurückgesetzt, der Workflow-Status bleibt; die Wiederherstellung wird
+  selbst als neue Version und im Audit-Log festgehalten).
+- **Audit-Log:** Die Redaktion sieht den tenant-gescopten Audit-Trail der
+  Event-Aktionen (Anlegen, Ändern, Einreichen, Freigeben, Veröffentlichen,
+  Wiederherstellen …).
+
 ## Noch nicht umgesetzt (Spezifikation, spätere Sprints)
 
-Eine **Versions-Ansicht/Wiederherstellung** im UI fehlt noch (Snapshots werden
-beim Veröffentlichen geschrieben, sind aber noch nicht einsehbar). Ebenfalls offen
-(bewusst zurückgestellt): Veranstaltungsserien, Audit-Log-Einsicht und
-Testcontainers/echtes Oracle in der CI (Thema #9 – der SQL-Syntax wird stattdessen
-wie oben beschrieben gegen H2/Oracle-Modus geprüft).
+Offen bleiben (bewusst zurückgestellt): **Veranstaltungsserien/Wiederholungen**
+(`VK_EVENT_SERIES`) und **Testcontainers/echtes Oracle in der CI** (Thema #9 – der
+SQL-Syntax wird stattdessen wie oben beschrieben gegen H2/Oracle-Modus geprüft).

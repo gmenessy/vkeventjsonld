@@ -460,6 +460,11 @@ a { color: var(--vk-primary); }
 .vk-list__rm { flex: 0 0 auto; align-self: center; }
 .vk-file { font-size: .85rem; }
 
+/* Versions-Historie in der Redaktion */
+.vk-versions { flex-basis: 100%; display: grid; gap: var(--vk-space-1); margin-top: var(--vk-space-2); }
+.vk-version { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vk-space-2);
+  font-size: .85rem; color: var(--vk-on-surface-variant); }
+
 @media (max-width: 1199px) {
   .vk-editor { grid-template-columns: minmax(0, 1fr); }
   .vk-cockpit { position: static; }

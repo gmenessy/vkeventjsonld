@@ -81,4 +81,59 @@ public class AdminEventRepository {
                 new MapSqlParameterSource().addValue("eid", eventId).addValue("ver", next)
                         .addValue("json", snapshotJson).addValue("by", createdBy));
     }
+
+    /** Versionsliste eines Events (neueste zuerst), tenant-gescoped über das Event. */
+    public JsonArray listVersions(long eventId) {
+        final JsonArray out = new JsonArray();
+        jdbc.query("SELECT v.VERSION_NO, v.CREATED_AT, u.DISPLAY_NAME AS AUTHOR "
+                 + "FROM VK_EVENT_VERSION v LEFT JOIN VK_USER u ON u.ID = v.CREATED_BY "
+                 + "WHERE v.EVENT_ID = :eid ORDER BY v.VERSION_NO DESC",
+                new MapSqlParameterSource("eid", eventId),
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+                    JsonObject o = new JsonObject();
+                    Json.num(o, "versionNo", rs.getInt("VERSION_NO"));
+                    Json.isoField(o, "createdAt", rs.getTimestamp("CREATED_AT"));
+                    Json.str(o, "author", rs.getString("AUTHOR"));
+                    out.add(o);
+                });
+        return out;
+    }
+
+    /** Snapshot-JSON einer bestimmten Version oder null. */
+    public String getVersionSnapshot(long eventId, int versionNo) {
+        try {
+            return jdbc.queryForObject(
+                    "SELECT SNAPSHOT_JSON FROM VK_EVENT_VERSION WHERE EVENT_ID=:eid AND VERSION_NO=:ver",
+                    new MapSqlParameterSource().addValue("eid", eventId).addValue("ver", versionNo),
+                    (rs, n) -> de.example.vk.util.ClobUtil.readClob(rs, "SNAPSHOT_JSON"));
+        } catch (EmptyResultDataAccessException ex) {
+            return null;
+        }
+    }
+
+    /** Audit-Einträge zu Events dieses Mandanten/VK (neueste zuerst), begrenzt. */
+    public JsonArray listEventAudit(int limit) {
+        MapSqlParameterSource p = new MapSqlParameterSource()
+                .addValue("m", ConfigVk.requireMandant()).addValue("vk", ConfigVk.requireVkId())
+                .addValue("lim", limit);
+        final JsonArray out = new JsonArray();
+        jdbc.query("SELECT a.ACTION, a.ENTITY_TYPE, a.NEW_VALUE_JSON, a.CREATED_AT, "
+                 + "u.DISPLAY_NAME AS AUTHOR, e.TITLE AS EVENT_TITLE "
+                 + "FROM VK_AUDIT_LOG a "
+                 + "JOIN VK_EVENT e ON e.ID = a.ENTITY_ID "
+                 + "LEFT JOIN VK_USER u ON u.ID = a.USER_ID "
+                 + "WHERE a.ENTITY_TYPE = 'EVENT' AND e.MANDANT_ID = :m AND e.VK_ID = :vk "
+                 + "ORDER BY a.CREATED_AT DESC, a.ID DESC FETCH FIRST :lim ROWS ONLY", p,
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+                    JsonObject o = new JsonObject();
+                    Json.str(o, "action", rs.getString("ACTION"));
+                    Json.str(o, "entityType", rs.getString("ENTITY_TYPE"));
+                    Json.str(o, "eventTitle", rs.getString("EVENT_TITLE"));
+                    Json.str(o, "note", rs.getString("NEW_VALUE_JSON"));
+                    Json.str(o, "author", rs.getString("AUTHOR"));
+                    Json.isoField(o, "createdAt", rs.getTimestamp("CREATED_AT"));
+                    out.add(o);
+                });
+        return out;
+    }
 }

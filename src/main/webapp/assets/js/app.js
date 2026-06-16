@@ -1812,6 +1812,7 @@
     parent.appendChild(el("a", { "class": "vk-btn vk-btn--text", href: API + "/admin/export/events?format=csv",
       target: "_blank", rel: "noopener", text: "CSV-Export" }));
     parent.appendChild(renderImportPanel());
+    parent.appendChild(renderAuditPanel());
     var listEl = el("div", { "class": "vk-members__list" });
     parent.appendChild(listEl);
     loadQueue("SUBMITTED");
@@ -1831,11 +1832,14 @@
           if (status === "APPROVED" || status === "SUBMITTED") {
             actions.appendChild(reviewBtn("Veröffentlichen", "publish", ev.id, status, "vk-btn"));
           }
+          var verlaufBox = el("div", { "class": "vk-versions" });
+          actions.appendChild(el("button", { type: "button", "class": "vk-btn vk-btn--text", text: "Verlauf",
+            onclick: function () { toggleVersions(verlaufBox, ev.id, status); } }));
           listEl.appendChild(el("div", { "class": "vk-row" }, [
             el("div", {}, [el("strong", { text: ev.title }),
               el("span", { "class": "vk-tag", text: wfLabel(ev.workflowStatus) }),
               ev.creator ? el("span", { "class": "vk-hint", text: "von " + ev.creator }) : null]),
-            actions
+            actions, verlaufBox
           ]));
         });
       }).catch(function (ex) { toast(ex.message); });
@@ -1848,6 +1852,73 @@
             .catch(function (ex) { toast(ex.message); });
         } });
     }
+  }
+
+  // ---- Versions-Historie (Redaktion) ----
+  function toggleVersions(box, publicId, status) {
+    if (box.dataset.open === "1") { clear(box); box.dataset.open = ""; return; }
+    box.dataset.open = "1";
+    clear(box);
+    box.appendChild(el("p", { "class": "vk-hint", text: "Verlauf wird geladen …" }));
+    getJson(API + "/admin/events/" + encodeURIComponent(publicId) + "/versions").then(function (body) {
+      var versions = body.data || [];
+      clear(box);
+      if (!versions.length) { box.appendChild(el("p", { "class": "vk-hint", text: "Noch keine Versionen." })); return; }
+      versions.forEach(function (v) {
+        var when = v.createdAt ? new Date(v.createdAt).toLocaleString("de-DE") : "";
+        box.appendChild(el("div", { "class": "vk-version" }, [
+          el("span", { text: "v" + v.versionNo + " · " + when + (v.author ? " · " + v.author : "") }),
+          el("button", { type: "button", "class": "vk-btn vk-btn--text", text: "Wiederherstellen",
+            onclick: function () { restoreVersion(publicId, v.versionNo, box, status); } })
+        ]));
+      });
+    }).catch(function (ex) { clear(box); box.appendChild(el("p", { "class": "vk-error", text: ex.message })); });
+  }
+
+  function restoreVersion(publicId, versionNo, box, status) {
+    if (!window.confirm("Inhalt auf Version " + versionNo + " zurücksetzen? Der aktuelle Stand wird überschrieben.")) {
+      return;
+    }
+    sendJson("POST", API + "/admin/events/" + encodeURIComponent(publicId) + "/versions/" + versionNo + "/restore")
+      .then(function () { toast("Version " + versionNo + " wiederhergestellt"); toggleVersions(box, publicId, status); toggleVersions(box, publicId, status); })
+      .catch(function (ex) { toast(ex.message); });
+  }
+
+  // ---- Audit-Log (Redaktion) ----
+  function renderAuditPanel() {
+    var wrap = el("details", { "class": "vk-import" }, [el("summary", { text: "Audit-Log" })]);
+    var list = el("div", { "class": "vk-members__list", "aria-live": "polite" });
+    wrap.appendChild(list);
+    var loaded = false;
+    wrap.addEventListener("toggle", function () {
+      if (!wrap.open || loaded) return;
+      loaded = true;
+      list.appendChild(el("p", { "class": "vk-hint", text: "Wird geladen …" }));
+      getJson(API + "/admin/audit", { limit: 100 }).then(function (body) {
+        var items = body.data || [];
+        clear(list);
+        if (!items.length) { list.appendChild(el("p", { "class": "vk-hint", text: "Keine Einträge." })); return; }
+        items.forEach(function (a) {
+          var when = a.createdAt ? new Date(a.createdAt).toLocaleString("de-DE") : "";
+          list.appendChild(el("div", { "class": "vk-row" }, [
+            el("div", {}, [
+              el("strong", { text: auditLabel(a.action) }),
+              a.eventTitle ? el("span", { "class": "vk-tag", text: a.eventTitle }) : null,
+              el("span", { "class": "vk-hint", text: when + (a.author ? " · " + a.author : "") })
+            ])
+          ]));
+        });
+      }).catch(function (ex) { clear(list); list.appendChild(el("p", { "class": "vk-error", text: ex.message })); });
+    });
+    return wrap;
+  }
+
+  function auditLabel(action) {
+    var map = { CREATE_EVENT: "Angelegt", UPDATE_EVENT: "Geändert", SUBMIT_EVENT: "Eingereicht",
+      WITHDRAW_EVENT: "Zurückgezogen", APPROVE_EVENT: "Freigegeben", REQUEST_CHANGES: "Änderung erbeten",
+      REJECT_EVENT: "Abgelehnt", PUBLISH_EVENT: "Veröffentlicht", CANCEL_EVENT: "Abgesagt",
+      ARCHIVE_EVENT: "Archiviert", RESTORE_VERSION: "Version wiederhergestellt", IMPORT_EVENT: "Importiert" };
+    return map[action] || action;
   }
 
   // ---- kleine Formular-Bausteine ----
