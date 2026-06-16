@@ -444,6 +444,22 @@ a { color: var(--vk-primary); }
   margin: var(--vk-space-2) 0; font-size: .9rem; }
 .vk-assist__out:focus-visible { outline: var(--vk-focus-ring); outline-offset: 2px; }
 
+/* Editor: Unterüberschriften + Wiederhol-Listen (Preise, Parteien, Assets) */
+.vk-form__section { font-size: .95rem; color: var(--vk-on-surface-variant);
+  margin: var(--vk-space-3) 0 0; padding-top: var(--vk-space-3);
+  border-top: 1px solid var(--vk-outline-variant); }
+.vk-list { display: grid; gap: var(--vk-space-2); margin-bottom: var(--vk-space-2); }
+.vk-list__row { display: flex; gap: var(--vk-space-2); align-items: flex-start;
+  background: var(--vk-surface); border: 1px solid var(--vk-outline-variant);
+  border-radius: var(--vk-radius-sm); padding: var(--vk-space-2); }
+.vk-list__row > :first-child { flex: 1 1 auto; min-width: 0; }
+.vk-list__grid { display: flex; flex-wrap: wrap; gap: var(--vk-space-2); }
+.vk-list__grid .vk-input { flex: 1 1 8rem; min-width: 0; }
+.vk-list__asset { display: grid; gap: var(--vk-space-2); flex: 1 1 auto; }
+.vk-list__thumb { max-width: 160px; max-height: 120px; border-radius: var(--vk-radius-sm); object-fit: cover; }
+.vk-list__rm { flex: 0 0 auto; align-self: center; }
+.vk-file { font-size: .85rem; }
+
 @media (max-width: 1199px) {
   .vk-editor { grid-template-columns: minmax(0, 1fr); }
   .vk-cockpit { position: static; }

@@ -117,6 +117,8 @@ Demo-Datensatz beim Start automatisch an.
 | `ANTHROPIC_API_KEY` | leer | Aktiviert Claude für die Redaktions-Assistenz (sonst Heuristik) |
 | `VK_GENAI_PROVIDER` | `auto` | `auto` (Claude wenn Key da), `heuristik` (erzwingt regelbasiert) |
 | `VK_GENAI_MODEL` | `claude-haiku-4-5` | Claude-Modell für die Assistenz |
+| `VK_UPLOAD_DIR` | `<tmp>/vk-uploads` | Ablageverzeichnis des Standard-Upload-Service |
+| `vk.upload.maxBytes` | `10485760` | Maximale Upload-Größe (Bytes) |
 
 ## Öffentliche API
 
@@ -135,6 +137,7 @@ Demo-Datensatz beim Start automatisch an.
 | POST | `/api/me/assist/alt-text` | GenAI: Bild-Alt-Text-Vorschlag (angemeldet) |
 | POST | `/api/me/assist/simplify` | GenAI: „Einfache Sprache" (angemeldet) |
 | POST | `/api/me/assist/suggest` | GenAI: Kategorie- & Schlagwort-Vorschlag (angemeldet) |
+| POST | `/api/me/uploads` | Datei-Upload (Bild/Dokument) → absolute URL (angemeldet) |
 
 Alle Endpunkte sind mandantengescoped; der Kontext kommt aus `ConfigVk`
 (serverseitig, je System konfiguriert), nicht aus dem Request.
@@ -211,10 +214,35 @@ Aufbauend auf dem öffentlichen Teil sind inzwischen umgesetzt:
   regelbasierte Smart Hints und lokales Autosave mit Wiederherstellen.
 - **GenAI-Assistenz** im Editor: Alt-Text-Vorschlag und „Einfache Sprache"
   (siehe oben), austauschbarer Anbieter mit hartem Fallback.
-- **Import/Export** (CSV/JSON) im Redaktionsbereich.
+- **Vollständige Eventpflege** im Editor, Selbsteintrag und Import: Einlasszeit,
+  Dauer (ISO-8601), Preise/Tickets (VK_OFFER), Mitwirkende & Sponsoren
+  (VK_PARTY/VK_EVENT_PARTY_ROLE), Bilder und Dokumente (VK_ASSET). Bilder
+  erfordern serverseitig einen Alternativtext (WCAG 1.1.1).
+- **Datei-Upload** über `ZMUploadService` (`uploadFile(HttpServletRequest)` →
+  absolute URL). Mitgeliefert ist eine lauffähige Standard-Implementierung
+  (lokaler Datei-Store, Auslieferung über `/uploads/*`); in Produktion durch eine
+  umgebungseigene Implementierung (Objekt-Speicher/CDN) ersetzbar.
+- **Import/Export** (CSV/JSON) im Redaktionsbereich. CSV unterstützt zusätzlich die
+  Flachspalten `doorTime`, `durationIso`, `price`, `performerNames`/`sponsorNames`
+  (mit `;` getrennt), `imageUrl`/`imageAlt`, `documentUrl`/`documentName`; JSON
+  unterstützt verschachtelte Arrays `offers`/`performers`/`sponsors`/`images`/`documents`.
+
+## SQL-Qualitätssicherung
+
+- `OracleSchemaSyntaxTest`: lädt das produktive Oracle-DDL (`V1__schema.sql`) in
+  H2 im **Oracle-Kompatibilitätsmodus** und prüft so jede Anweisung syntaktisch
+  (Oracle-native Token wie `TIMESTAMP WITH LOCAL TIME ZONE`/`SYSTIMESTAMP` werden
+  für die H2-Prüfung normalisiert); prüft außerdem Tabellengleichheit zwischen
+  Oracle- und H2-Schema sowie die Struktur des Oracle-Text-Index (`V2`).
+- `SqlOperationsIntegrationTest`: übt **alle SQL-Operationen** der
+  Repositories/Services gegen H2 (Anlage mit allen Feldern, Wiederlesen,
+  Beziehungen ersetzen, Selbsteintrags- und Redaktions-Workflow inkl.
+  Versions-Snapshot, Export, CSV-/JSON-Import, Audit, Kategorie-Baum).
 
 ## Noch nicht umgesetzt (Spezifikation, spätere Sprints)
 
-Vollständige Versionierung/Historie der Events ist in der Spezifikation
-beschrieben, aber noch nicht Teil dieser Implementierung. Schema und
-API-Struktur sind darauf vorbereitet.
+Eine **Versions-Ansicht/Wiederherstellung** im UI fehlt noch (Snapshots werden
+beim Veröffentlichen geschrieben, sind aber noch nicht einsehbar). Ebenfalls offen
+(bewusst zurückgestellt): Veranstaltungsserien, Audit-Log-Einsicht und
+Testcontainers/echtes Oracle in der CI (Thema #9 – der SQL-Syntax wird stattdessen
+wie oben beschrieben gegen H2/Oracle-Modus geprüft).

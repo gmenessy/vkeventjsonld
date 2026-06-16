@@ -365,6 +365,19 @@ public class EventRepository {
                     images.add(asset);
                 });
         event.add("images", images);
+
+        final JsonArray documents = new JsonArray();
+        jdbc.query("SELECT STORAGE_PATH, FILE_NAME, MIME_TYPE "
+                 + "FROM VK_ASSET WHERE EVENT_ID = :eid AND ASSET_TYPE = 'DOCUMENT' "
+                 + "ORDER BY SORT_ORDER", p,
+                (RowCallbackHandler) rs -> {
+                    JsonObject doc = new JsonObject();
+                    Json.str(doc, "url", rs.getString("STORAGE_PATH"));
+                    Json.str(doc, "fileName", rs.getString("FILE_NAME"));
+                    Json.str(doc, "mimeType", rs.getString("MIME_TYPE"));
+                    documents.add(doc);
+                });
+        event.add("documents", documents);
     }
 
     private static final RowMapper<JsonObject> DETAIL_MAPPER = new RowMapper<JsonObject>() {

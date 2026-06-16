@@ -3,6 +3,7 @@ package de.example.vk.api;
 import com.google.gson.JsonObject;
 import de.example.vk.service.NotFoundException;
 import de.example.vk.service.ValidationException;
+import de.example.vk.service.upload.UploadException;
 import de.example.vk.util.Json;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +29,12 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public JsonObject validation(ValidationException ex) {
         return Json.error("VALIDATION", ex.getField(), ex.getMessage());
+    }
+
+    @ExceptionHandler(UploadException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public JsonObject upload(UploadException ex) {
+        return Json.error("UPLOAD_FAILED", null, ex.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)

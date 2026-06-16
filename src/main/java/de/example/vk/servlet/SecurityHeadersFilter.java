@@ -34,7 +34,7 @@ public class SecurityHeadersFilter implements Filter {
                 "default-src 'self'; "
               + "script-src 'self' 'nonce-" + nonce + "'; "
               + "style-src 'self' 'unsafe-inline'; "
-              + "img-src 'self' data:; "
+              + "img-src 'self' data: https:; "
               + "connect-src 'self'; "
               + "frame-ancestors 'none'; "
               + "base-uri 'self'; "

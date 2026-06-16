@@ -35,6 +35,8 @@ public class EventWriteRepository {
         public String descriptionHtml; // bereits sanitisiert
         public Timestamp startAt;
         public Timestamp endAt;
+        public Timestamp doorTime;     // Einlass
+        public String durationIso;     // ISO-8601-Dauer, z. B. PT2H30M
         public String attendanceMode = "OFFLINE";
         public boolean accessibleForFree;
         public String categorySlug;
@@ -43,6 +45,36 @@ public class EventWriteRepository {
         public String organizerName;
         public String organizerEmail;
         public List<String> keywords;
+        public List<Offer> offers = new java.util.ArrayList<Offer>();
+        public List<PartyRef> performers = new java.util.ArrayList<PartyRef>();
+        public List<PartyRef> sponsors = new java.util.ArrayList<PartyRef>();
+        public List<AssetRef> images = new java.util.ArrayList<AssetRef>();
+        public List<AssetRef> documents = new java.util.ArrayList<AssetRef>();
+    }
+
+    /** Preis-/Angebotszeile (VK_OFFER). */
+    public static final class Offer {
+        public String name;
+        public java.math.BigDecimal price;
+        public String priceCurrency = "EUR";
+        public String url;
+        public String availability;
+    }
+
+    /** Mitwirkende(r)/Sponsor (VK_PARTY + VK_EVENT_PARTY_ROLE), Freitext-Name. */
+    public static final class PartyRef {
+        public String displayName;
+        public String email;
+        public String url;
+    }
+
+    /** Bild- oder Dokument-Asset (VK_ASSET); URL stammt aus dem Upload-Service. */
+    public static final class AssetRef {
+        public String url;
+        public String fileName;
+        public String mimeType;
+        public String altText;       // nur Bilder
+        public String copyrightText; // nur Bilder
     }
 
     @Transactional
@@ -60,16 +92,19 @@ public class EventWriteRepository {
                 .addValue("type", in.schemaType).addValue("title", in.title)
                 .addValue("shortDesc", in.shortDescription).addValue("desc", in.descriptionHtml)
                 .addValue("startAt", in.startAt).addValue("endAt", in.endAt)
+                .addValue("doorTime", in.doorTime).addValue("durationIso", emptyToNull(in.durationIso))
                 .addValue("mode", in.attendanceMode)
                 .addValue("free", in.accessibleForFree ? "Y" : "N")
                 .addValue("placeId", placeId).addValue("vlocId", vlocId)
                 .addValue("search", buildSearchText(in))
                 .addValue("createdBy", userId);
         jdbc.update("INSERT INTO VK_EVENT (PUBLIC_ID, MANDANT_ID, VK_ID, SCHEMA_TYPE, TITLE, SHORT_DESCRIPTION, "
-                + "DESCRIPTION, START_AT, END_AT, ATTENDANCE_MODE, EVENT_STATUS, WORKFLOW_STATUS, "
-                + "IS_ACCESSIBLE_FOR_FREE, PLACE_ID, VIRTUAL_LOCATION_ID, SEARCH_TEXT, CREATED_BY, CREATED_AT) "
-                + "VALUES (:pid, :mandant, :vk, :type, :title, :shortDesc, :desc, :startAt, :endAt, :mode, "
-                + "'EventScheduled', 'DRAFT', :free, :placeId, :vlocId, :search, :createdBy, CURRENT_TIMESTAMP)",
+                + "DESCRIPTION, START_AT, END_AT, DOOR_TIME, DURATION_ISO, ATTENDANCE_MODE, EVENT_STATUS, "
+                + "WORKFLOW_STATUS, IS_ACCESSIBLE_FOR_FREE, PLACE_ID, VIRTUAL_LOCATION_ID, SEARCH_TEXT, "
+                + "CREATED_BY, CREATED_AT) "
+                + "VALUES (:pid, :mandant, :vk, :type, :title, :shortDesc, :desc, :startAt, :endAt, :doorTime, "
+                + ":durationIso, :mode, 'EventScheduled', 'DRAFT', :free, :placeId, :vlocId, :search, "
+                + ":createdBy, CURRENT_TIMESTAMP)",
                 p, kh, new String[]{"ID"});
         long eventId = kh.getKey().longValue();
         writeRelations(eventId, in, mandant, vk);
@@ -87,13 +122,15 @@ public class EventWriteRepository {
                 .addValue("type", in.schemaType).addValue("title", in.title)
                 .addValue("shortDesc", in.shortDescription).addValue("desc", in.descriptionHtml)
                 .addValue("startAt", in.startAt).addValue("endAt", in.endAt)
+                .addValue("doorTime", in.doorTime).addValue("durationIso", emptyToNull(in.durationIso))
                 .addValue("mode", in.attendanceMode)
                 .addValue("free", in.accessibleForFree ? "Y" : "N")
                 .addValue("placeId", placeId).addValue("vlocId", vlocId)
                 .addValue("search", buildSearchText(in))
                 .addValue("updatedBy", userId);
         jdbc.update("UPDATE VK_EVENT SET SCHEMA_TYPE=:type, TITLE=:title, SHORT_DESCRIPTION=:shortDesc, "
-                + "DESCRIPTION=:desc, START_AT=:startAt, END_AT=:endAt, ATTENDANCE_MODE=:mode, "
+                + "DESCRIPTION=:desc, START_AT=:startAt, END_AT=:endAt, DOOR_TIME=:doorTime, "
+                + "DURATION_ISO=:durationIso, ATTENDANCE_MODE=:mode, "
                 + "IS_ACCESSIBLE_FOR_FREE=:free, PLACE_ID=:placeId, VIRTUAL_LOCATION_ID=:vlocId, "
                 + "SEARCH_TEXT=:search, UPDATED_BY=:updatedBy, UPDATED_AT=CURRENT_TIMESTAMP WHERE ID=:id", p);
         // Beziehungen ersetzen
@@ -101,6 +138,8 @@ public class EventWriteRepository {
         jdbc.update("DELETE FROM VK_EVENT_CATEGORY WHERE EVENT_ID = :eid", eid);
         jdbc.update("DELETE FROM VK_EVENT_KEYWORD WHERE EVENT_ID = :eid", eid);
         jdbc.update("DELETE FROM VK_EVENT_PARTY_ROLE WHERE EVENT_ID = :eid", eid);
+        jdbc.update("DELETE FROM VK_OFFER WHERE EVENT_ID = :eid", eid);
+        jdbc.update("DELETE FROM VK_ASSET WHERE EVENT_ID = :eid", eid);
         writeRelations(eventId, in, mandant, vk);
     }
 
@@ -174,11 +213,81 @@ public class EventWriteRepository {
             }
         }
         if (in.organizerName != null && !in.organizerName.trim().isEmpty()) {
-            long partyId = resolveOrganizer(in.organizerName.trim(), in.organizerEmail, mandant, vk);
+            long partyId = resolveParty(in.organizerName.trim(), in.organizerEmail, null,
+                    "ORGANIZATION", mandant, vk);
             jdbc.update("INSERT INTO VK_EVENT_PARTY_ROLE (EVENT_ID, PARTY_ID, ROLE_TYPE, SORT_ORDER) "
                     + "VALUES (:eid, :pid, 'ORGANIZER', 0)",
                     new MapSqlParameterSource().addValue("eid", eventId).addValue("pid", partyId));
         }
+        writePartyRole(eventId, in.performers, "PERFORMER", "PERSON", mandant, vk);
+        writePartyRole(eventId, in.sponsors, "SPONSOR", "ORGANIZATION", mandant, vk);
+        writeOffers(eventId, in.offers);
+        writeAssets(eventId, in.images, "IMAGE");
+        writeAssets(eventId, in.documents, "DOCUMENT");
+    }
+
+    private void writePartyRole(long eventId, List<PartyRef> parties, String role, String partyType,
+                                long mandant, long vk) {
+        if (parties == null) {
+            return;
+        }
+        int sort = 0;
+        java.util.Set<Long> seen = new java.util.HashSet<Long>();
+        for (PartyRef ref : parties) {
+            if (ref == null || ref.displayName == null || ref.displayName.trim().isEmpty()) {
+                continue;
+            }
+            long partyId = resolveParty(ref.displayName.trim(), ref.email, ref.url, partyType, mandant, vk);
+            if (!seen.add(partyId)) {
+                continue; // selbe Partei nicht doppelt in derselben Rolle (PK-Schutz)
+            }
+            jdbc.update("INSERT INTO VK_EVENT_PARTY_ROLE (EVENT_ID, PARTY_ID, ROLE_TYPE, SORT_ORDER) "
+                    + "VALUES (:eid, :pid, :role, :sort)",
+                    new MapSqlParameterSource().addValue("eid", eventId).addValue("pid", partyId)
+                            .addValue("role", role).addValue("sort", sort++));
+        }
+    }
+
+    private void writeOffers(long eventId, List<Offer> offers) {
+        if (offers == null) {
+            return;
+        }
+        for (Offer o : offers) {
+            if (o == null || (o.price == null && (o.name == null || o.name.trim().isEmpty())
+                    && (o.url == null || o.url.trim().isEmpty()))) {
+                continue; // völlig leere Zeile überspringen
+            }
+            jdbc.update("INSERT INTO VK_OFFER (EVENT_ID, NAME, PRICE, PRICE_CURRENCY, URL, AVAILABILITY) "
+                    + "VALUES (:eid, :name, :price, :cur, :url, :avail)",
+                    new MapSqlParameterSource().addValue("eid", eventId)
+                            .addValue("name", emptyToNull(o.name)).addValue("price", o.price)
+                            .addValue("cur", o.priceCurrency == null || o.priceCurrency.trim().isEmpty()
+                                    ? "EUR" : o.priceCurrency.trim().toUpperCase())
+                            .addValue("url", emptyToNull(o.url)).addValue("avail", emptyToNull(o.availability)));
+        }
+    }
+
+    private void writeAssets(long eventId, List<AssetRef> assets, String assetType) {
+        if (assets == null) {
+            return;
+        }
+        int sort = 0;
+        for (AssetRef a : assets) {
+            if (a == null || a.url == null || a.url.trim().isEmpty()) {
+                continue;
+            }
+            jdbc.update("INSERT INTO VK_ASSET (EVENT_ID, ASSET_TYPE, FILE_NAME, MIME_TYPE, STORAGE_PATH, "
+                    + "ALT_TEXT, COPYRIGHT_TEXT, SORT_ORDER) "
+                    + "VALUES (:eid, :type, :file, :mime, :path, :alt, :copy, :sort)",
+                    new MapSqlParameterSource().addValue("eid", eventId).addValue("type", assetType)
+                            .addValue("file", emptyToNull(a.fileName)).addValue("mime", emptyToNull(a.mimeType))
+                            .addValue("path", a.url.trim()).addValue("alt", emptyToNull(a.altText))
+                            .addValue("copy", emptyToNull(a.copyrightText)).addValue("sort", sort++));
+        }
+    }
+
+    private static String emptyToNull(String s) {
+        return s == null || s.trim().isEmpty() ? null : s.trim();
     }
 
     private Long resolvePlaceId(String placePublicId) {
@@ -219,20 +328,23 @@ public class EventWriteRepository {
         }
     }
 
-    private long resolveOrganizer(String name, String email, long mandant, long vk) {
+    /** Findet eine Partei (Name + Typ, tenant-gescoped) oder legt sie an. Freitext-Name. */
+    private long resolveParty(String name, String email, String url, String partyType, long mandant, long vk) {
         try {
             return jdbc.queryForObject(
                     "SELECT ID FROM VK_PARTY WHERE MANDANT_ID=:m AND VK_ID=:vk AND DISPLAY_NAME=:name "
-                  + "AND PARTY_TYPE='ORGANIZATION'",
-                    new MapSqlParameterSource().addValue("m", mandant).addValue("vk", vk).addValue("name", name),
+                  + "AND PARTY_TYPE=:type",
+                    new MapSqlParameterSource().addValue("m", mandant).addValue("vk", vk)
+                            .addValue("name", name).addValue("type", partyType),
                     Long.class);
         } catch (EmptyResultDataAccessException ex) {
             KeyHolder kh = new GeneratedKeyHolder();
-            jdbc.update("INSERT INTO VK_PARTY (PUBLIC_ID, MANDANT_ID, VK_ID, PARTY_TYPE, DISPLAY_NAME, EMAIL) "
-                    + "VALUES (:pid, :m, :vk, 'ORGANIZATION', :name, :email)",
+            jdbc.update("INSERT INTO VK_PARTY (PUBLIC_ID, MANDANT_ID, VK_ID, PARTY_TYPE, DISPLAY_NAME, EMAIL, URL) "
+                    + "VALUES (:pid, :m, :vk, :type, :name, :email, :url)",
                     new MapSqlParameterSource().addValue("pid", UUID.randomUUID().toString())
-                            .addValue("m", mandant).addValue("vk", vk).addValue("name", name)
-                            .addValue("email", email),
+                            .addValue("m", mandant).addValue("vk", vk).addValue("type", partyType)
+                            .addValue("name", name).addValue("email", emptyToNull(email))
+                            .addValue("url", emptyToNull(url)),
                     kh, new String[]{"ID"});
             return kh.getKey().longValue();
         }

@@ -834,6 +834,21 @@
       content.appendChild(offerSection);
     }
 
+    // Dokumente (Downloads)
+    if (ev.documents && ev.documents.length) {
+      var docSection = el("div", { "class": "vk-detail__section" }, [el("h3", { text: "Dokumente" })]);
+      var docUl = el("ul", {});
+      ev.documents.forEach(function (doc) {
+        if (!doc.url) return;
+        docUl.appendChild(el("li", {}, [
+          el("a", { href: doc.url, target: "_blank", rel: "noopener noreferrer",
+            text: doc.fileName || "Dokument herunterladen" })
+        ]));
+      });
+      docSection.appendChild(docUl);
+      content.appendChild(docSection);
+    }
+
     // Barrierefreiheit
     if (ev.place && ev.place.accessibilityNote) {
       content.appendChild(el("div", { "class": "vk-detail__section" }, [
@@ -1168,6 +1183,8 @@
     f.description = textareaField("Beschreibung (einfaches HTML erlaubt)");
     f.startAt = inputField("Beginn *", "datetime-local");
     f.endAt = inputField("Ende", "datetime-local");
+    f.doorTime = inputField("Einlass", "datetime-local");
+    f.durationIso = inputField("Dauer (ISO-8601, z. B. PT2H30M)", "text");
     f.mode = selectField("Format *", [["OFFLINE", "Vor Ort"], ["ONLINE", "Online"], ["MIXED", "Hybrid"]]);
     f.place = placePicker();
     f.virtualUrl = inputField("Online-Link (bei Online/Hybrid)", "url");
@@ -1176,6 +1193,11 @@
     f.organizerEmail = inputField("Kontakt-E-Mail", "email");
     f.keywords = inputField("Schlagworte (mit Komma getrennt)", "text");
     f.free = checkboxField("Kostenlose Veranstaltung");
+    f.offers = offersField();
+    f.performers = partyListField("+ Mitwirkende(r)");
+    f.sponsors = partyListField("+ Sponsor");
+    f.images = imagesField(snapshot);
+    f.documents = documentsField();
 
     // GenAI-Assistenz (Schreibzeit): „Einfache Sprache" direkt an der Beschreibung
     addSimplifyControl(f.description);
@@ -1183,8 +1205,14 @@
     var saveState = el("span", { "class": "vk-hint", "aria-live": "polite" });
     var formEl = el("form", { "class": "vk-form" }, [
       f.title.field, f.shortDescription.field, f.description.field,
-      f.startAt.field, f.endAt.field, f.mode.field, f.place.field, f.virtualUrl.field,
+      f.startAt.field, f.endAt.field, f.doorTime.field, f.durationIso.field,
+      f.mode.field, f.place.field, f.virtualUrl.field,
       f.category.field, f.organizerName.field, f.organizerEmail.field, f.keywords.field, f.free.field,
+      formSection("Preise / Tickets"), f.offers.field,
+      formSection("Mitwirkende"), f.performers.field,
+      formSection("Sponsoren"), f.sponsors.field,
+      formSection("Bilder"), f.images.field,
+      formSection("Dokumente"), f.documents.field,
       err,
       el("div", { "class": "vk-form__actions" }, [
         el("button", { type: "submit", "class": "vk-btn", text: publicId ? "Speichern" : "Entwurf anlegen" }),
@@ -1272,6 +1300,8 @@
     f.description.input.value = s.description || "";
     f.startAt.input.value = s.startAt || "";
     f.endAt.input.value = s.endAt || "";
+    f.doorTime.input.value = s.doorTime || "";
+    f.durationIso.input.value = s.durationIso || "";
     f.mode.input.value = s.attendanceMode || "OFFLINE";
     if (s.place) f.place.set(s.place, s.placeLabel || s.place);
     f.virtualUrl.input.value = s.virtualUrl || "";
@@ -1280,6 +1310,11 @@
     f.organizerEmail.input.value = s.organizerEmail || "";
     f.keywords.input.value = (s.keywords || []).join(", ");
     f.free.input.checked = !!s.isAccessibleForFree;
+    f.offers.setValues(s.offers || []);
+    f.performers.setValues(s.performers || []);
+    f.sponsors.setValues(s.sponsors || []);
+    f.images.setValues(s.images || []);
+    f.documents.setValues(s.documents || []);
   }
 
   function offerLocalRestore(bar, key, f, update) {
@@ -1503,6 +1538,168 @@
     });
   }
 
+  // ---- Datei-Upload (Bilder/Dokumente) über ZMUploadService ----
+  function uploadFile(file) {
+    var fd = new FormData();
+    fd.append("file", file);
+    return fetch(buildUrl(API + "/me/uploads"), {
+      method: "POST", credentials: "same-origin",
+      headers: { "X-CSRF-Token": (auth.user && auth.user.csrfToken) || "" },
+      body: fd
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (b) {
+        if (!res.ok || b.success === false) {
+          throw new Error((b.errors && b.errors[0] && b.errors[0].message) || ("Fehler " + res.status));
+        }
+        return b.data;
+      });
+    });
+  }
+
+  // ---- Generische Wiederhol-Liste (Offers, Parteien, Assets) ----
+  // rowFactory() -> { element, get: ()->valueOrNull, set: fn(value) }
+  function makeList(addLabel, rowFactory) {
+    var rows = el("div", { "class": "vk-list" });
+    var items = [];
+    function addRow(value) {
+      var r = rowFactory();
+      var entry = { row: r, el: null };
+      var rm = el("button", { type: "button", "class": "vk-btn vk-btn--text vk-list__rm",
+        text: "Entfernen", onclick: function () {
+          rows.removeChild(entry.el);
+          items = items.filter(function (x) { return x !== entry; });
+        } });
+      entry.el = el("div", { "class": "vk-list__row" }, [r.element, rm]);
+      items.push(entry);
+      rows.appendChild(entry.el);
+      if (value != null) r.set(value);
+      return r;
+    }
+    var addBtn = el("button", { type: "button", "class": "vk-btn vk-btn--tonal",
+      text: addLabel, onclick: function () { addRow(); } });
+    return {
+      field: el("div", { "class": "vk-field" }, [rows, addBtn]),
+      getValues: function () {
+        return items.map(function (e) { return e.row.get(); }).filter(function (v) { return v != null; });
+      },
+      setValues: function (arr) {
+        clear(rows); items = [];
+        (arr || []).forEach(function (v) { addRow(v); });
+      }
+    };
+  }
+
+  function smallInput(placeholder, type) {
+    return el("input", { "class": "vk-input", type: type || "text", placeholder: placeholder || "" });
+  }
+
+  function offersField() {
+    return makeList("+ Preis/Ticket", function () {
+      var name = smallInput("Bezeichnung (z. B. Erwachsene)");
+      var price = smallInput("Preis", "number"); price.setAttribute("step", "0.01"); price.setAttribute("min", "0");
+      var cur = smallInput("EUR"); cur.value = "EUR"; cur.maxLength = 3; cur.style.maxWidth = "5rem";
+      var url = smallInput("Ticket-Link (optional)", "url");
+      var avail = smallInput("Verfügbarkeit (optional)");
+      return {
+        element: el("div", { "class": "vk-list__grid" }, [name, price, cur, url, avail]),
+        get: function () {
+          if (!name.value.trim() && !price.value.trim() && !url.value.trim()) return null;
+          return { name: name.value.trim(), price: price.value.trim(),
+            priceCurrency: cur.value.trim() || "EUR", url: url.value.trim(), availability: avail.value.trim() };
+        },
+        set: function (v) {
+          name.value = v.name || ""; price.value = v.price != null ? v.price : "";
+          cur.value = v.priceCurrency || "EUR"; url.value = v.url || ""; avail.value = v.availability || "";
+        }
+      };
+    });
+  }
+
+  function partyListField(addLabel) {
+    return makeList(addLabel, function () {
+      var name = smallInput("Name");
+      var email = smallInput("E-Mail (optional)", "email");
+      var url = smallInput("Webseite (optional)", "url");
+      return {
+        element: el("div", { "class": "vk-list__grid" }, [name, email, url]),
+        get: function () {
+          if (!name.value.trim()) return null;
+          return { displayName: name.value.trim(), email: email.value.trim(), url: url.value.trim() };
+        },
+        set: function (v) { name.value = v.displayName || ""; email.value = v.email || ""; url.value = v.url || ""; }
+      };
+    });
+  }
+
+  function imagesField(getSnapshot) {
+    return makeList("+ Bild hochladen", function () {
+      var url = "";
+      var thumb = el("img", { "class": "vk-list__thumb", alt: "", hidden: "hidden" });
+      var alt = smallInput("Alternativtext (Pflicht, Barrierefreiheit)");
+      var copyright = smallInput("Bildnachweis (optional)");
+      var status = el("span", { "class": "vk-hint", "aria-live": "polite" });
+      var fileIn = el("input", { type: "file", accept: "image/*", "class": "vk-file" });
+      fileIn.addEventListener("change", function () {
+        if (!fileIn.files || !fileIn.files[0]) return;
+        status.textContent = "Wird hochgeladen …";
+        uploadFile(fileIn.files[0]).then(function (data) {
+          url = data.url; thumb.src = url; thumb.hidden = false; status.textContent = "Hochgeladen.";
+        }).catch(function (ex) { status.textContent = ex.message; });
+      });
+      var suggest = el("button", { type: "button", "class": "vk-btn vk-btn--text", text: "✨ Alt-Text",
+        onclick: function () {
+          var s = getSnapshot ? getSnapshot() : {};
+          if (!s.title) { status.textContent = "Bitte zuerst einen Titel eingeben."; return; }
+          status.textContent = "Alt-Text wird erstellt …";
+          sendJson("POST", API + "/me/assist/alt-text", {
+            title: s.title, categoryName: s.category ? findCategoryName(s.category) : null,
+            placeLabel: s.placeLabel || null, shortDescription: s.shortDescription || null
+          }).then(function (d) { if (d.suggestion) { alt.value = d.suggestion; } status.textContent = "Alt-Text vorgeschlagen" + providerSuffix(d.provider) + "."; })
+            .catch(function (ex) { status.textContent = ex.message; });
+        } });
+      return {
+        element: el("div", { "class": "vk-list__asset" }, [thumb, fileIn,
+          el("div", { "class": "vk-list__grid" }, [alt, copyright]),
+          el("div", { "class": "vk-assist" }, [suggest, status])]),
+        get: function () {
+          if (!url) return null;
+          return { url: url, altText: alt.value.trim(), copyrightText: copyright.value.trim() };
+        },
+        set: function (v) {
+          url = v.url || ""; if (url) { thumb.src = url; thumb.hidden = false; }
+          alt.value = v.altText || ""; copyright.value = v.copyrightText || "";
+        }
+      };
+    });
+  }
+
+  function documentsField() {
+    return makeList("+ Dokument hochladen", function () {
+      var url = "";
+      var name = smallInput("Anzeigename (z. B. Programm.pdf)");
+      var link = el("a", { "class": "vk-hint", target: "_blank", rel: "noopener", hidden: "hidden", text: "Vorschau" });
+      var status = el("span", { "class": "vk-hint", "aria-live": "polite" });
+      var fileIn = el("input", { type: "file", accept: ".pdf,.doc,.docx", "class": "vk-file" });
+      fileIn.addEventListener("change", function () {
+        if (!fileIn.files || !fileIn.files[0]) return;
+        if (!name.value.trim()) name.value = fileIn.files[0].name;
+        status.textContent = "Wird hochgeladen …";
+        uploadFile(fileIn.files[0]).then(function (data) {
+          url = data.url; link.href = url; link.hidden = false; status.textContent = "Hochgeladen.";
+        }).catch(function (ex) { status.textContent = ex.message; });
+      });
+      return {
+        element: el("div", { "class": "vk-list__asset" }, [fileIn,
+          el("div", { "class": "vk-list__grid" }, [name, link]), status]),
+        get: function () { if (!url) return null; return { url: url, fileName: name.value.trim() }; },
+        set: function (v) {
+          url = v.url || ""; name.value = v.fileName || "";
+          if (url) { link.href = url; link.hidden = false; }
+        }
+      };
+    });
+  }
+
   function collect(f) {
     return {
       title: f.title.input.value.trim(),
@@ -1510,6 +1707,8 @@
       description: f.description.input.value,
       startAt: f.startAt.input.value,
       endAt: f.endAt.input.value,
+      doorTime: f.doorTime.input.value,
+      durationIso: f.durationIso.input.value.trim(),
       attendanceMode: f.mode.input.value,
       place: f.place.getId(),
       virtualUrl: f.virtualUrl.input.value.trim(),
@@ -1517,7 +1716,12 @@
       organizerName: f.organizerName.input.value.trim(),
       organizerEmail: f.organizerEmail.input.value.trim(),
       keywords: f.keywords.input.value.split(",").map(function (s) { return s.trim(); }).filter(Boolean),
-      isAccessibleForFree: f.free.input.checked
+      isAccessibleForFree: f.free.input.checked,
+      offers: f.offers.getValues(),
+      performers: f.performers.getValues(),
+      sponsors: f.sponsors.getValues(),
+      images: f.images.getValues(),
+      documents: f.documents.getValues()
     };
   }
 
@@ -1528,6 +1732,8 @@
     f.description.input.value = ev.description || "";
     f.startAt.input.value = isoToLocal(ev.startAt);
     f.endAt.input.value = isoToLocal(ev.endAt);
+    f.doorTime.input.value = isoToLocal(ev.doorTime);
+    f.durationIso.input.value = ev.durationIso || "";
     f.mode.input.value = ev.attendanceMode || "OFFLINE";
     if (ev.place) f.place.set(ev.place.id, ev.place.name);
     if (ev.virtualLocation) f.virtualUrl.input.value = ev.virtualLocation.url || "";
@@ -1538,6 +1744,11 @@
     }
     if (ev.keywords) f.keywords.input.value = ev.keywords.join(", ");
     f.free.input.checked = !!ev.isAccessibleForFree;
+    f.offers.setValues(ev.offers || []);
+    f.performers.setValues(ev.performers || []);
+    f.sponsors.setValues(ev.sponsors || []);
+    f.images.setValues(ev.images || []);
+    f.documents.setValues(ev.documents || []);
   }
 
   function isoToLocal(iso) { return iso ? String(iso).slice(0, 16) : ""; }
@@ -1659,6 +1870,9 @@
   function checkboxField(label) {
     var input = el("input", { type: "checkbox" });
     return { field: el("label", { "class": "vk-switch" }, [input, document.createTextNode(label)]), input: input };
+  }
+  function formSection(title) {
+    return el("h3", { "class": "vk-form__section", text: title });
   }
   function categoryOptions() {
     var opts = [["", "– bitte wählen –"]];

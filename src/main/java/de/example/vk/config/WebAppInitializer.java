@@ -3,9 +3,11 @@ package de.example.vk.config;
 import de.example.vk.servlet.AuthFilter;
 import de.example.vk.servlet.SecurityHeadersFilter;
 import de.example.vk.servlet.ShellServlet;
+import de.example.vk.servlet.UploadServlet;
 import org.springframework.web.servlet.support.AbstractAnnotationConfigDispatcherServletInitializer;
 
 import javax.servlet.DispatcherType;
+import javax.servlet.MultipartConfigElement;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 import javax.servlet.ServletRegistration;
@@ -39,6 +41,9 @@ public class WebAppInitializer extends AbstractAnnotationConfigDispatcherServlet
     @Override
     protected void customizeRegistration(ServletRegistration.Dynamic registration) {
         registration.setAsyncSupported(true);
+        // Multipart aktivieren, damit der Upload-Endpunkt request.getParts() lesen kann.
+        registration.setMultipartConfig(new MultipartConfigElement(
+                null, 10L * 1024 * 1024, 12L * 1024 * 1024, 0));
     }
 
     @Override
@@ -57,5 +62,10 @@ public class WebAppInitializer extends AbstractAnnotationConfigDispatcherServlet
         ServletRegistration.Dynamic shell = servletContext.addServlet("shell", new ShellServlet());
         shell.setLoadOnStartup(2);
         shell.addMapping("");
+
+        // Lokale Auslieferung hochgeladener Dateien (Standard-Upload-Service);
+        // in Produktion mit externem Speicher/CDN i. d. R. nicht aktiv genutzt.
+        ServletRegistration.Dynamic uploads = servletContext.addServlet("uploads", new UploadServlet());
+        uploads.addMapping("/uploads/*");
     }
 }
