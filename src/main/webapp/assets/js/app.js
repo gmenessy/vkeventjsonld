@@ -1590,7 +1590,9 @@
   }
 
   function smallInput(placeholder, type) {
-    return el("input", { "class": "vk-input", type: type || "text", placeholder: placeholder || "" });
+    // Platzhalter dient zugleich als zugänglicher Name (WCAG: jedes Feld braucht ein Label).
+    return el("input", { "class": "vk-input", type: type || "text",
+      placeholder: placeholder || "", "aria-label": placeholder || "" });
   }
 
   function offersField() {
@@ -1638,7 +1640,7 @@
       var alt = smallInput("Alternativtext (Pflicht, Barrierefreiheit)");
       var copyright = smallInput("Bildnachweis (optional)");
       var status = el("span", { "class": "vk-hint", "aria-live": "polite" });
-      var fileIn = el("input", { type: "file", accept: "image/*", "class": "vk-file" });
+      var fileIn = el("input", { type: "file", accept: "image/*", "class": "vk-file", "aria-label": "Bilddatei auswählen" });
       fileIn.addEventListener("change", function () {
         if (!fileIn.files || !fileIn.files[0]) return;
         status.textContent = "Wird hochgeladen …";
@@ -1679,7 +1681,7 @@
       var name = smallInput("Anzeigename (z. B. Programm.pdf)");
       var link = el("a", { "class": "vk-hint", target: "_blank", rel: "noopener", hidden: "hidden", text: "Vorschau" });
       var status = el("span", { "class": "vk-hint", "aria-live": "polite" });
-      var fileIn = el("input", { type: "file", accept: ".pdf,.doc,.docx", "class": "vk-file" });
+      var fileIn = el("input", { type: "file", accept: ".pdf,.doc,.docx", "class": "vk-file", "aria-label": "Dokumentdatei auswählen" });
       fileIn.addEventListener("change", function () {
         if (!fileIn.files || !fileIn.files[0]) return;
         if (!name.value.trim()) name.value = fileIn.files[0].name;
@@ -1757,12 +1759,12 @@
   // ---- Import-Panel (CSV/JSON) ----
   function renderImportPanel() {
     var wrap = el("details", { "class": "vk-import" }, [el("summary", { text: "Import (CSV / JSON)" })]);
-    var fmt = el("select", { "class": "vk-select" }, [
+    var fmt = el("select", { "class": "vk-select", "aria-label": "Importformat" }, [
       el("option", { value: "csv", text: "CSV" }), el("option", { value: "json", text: "JSON" })]);
-    var status = el("select", { "class": "vk-select" }, [
+    var status = el("select", { "class": "vk-select", "aria-label": "Importziel-Status" }, [
       el("option", { value: "DRAFT", text: "als Entwurf" }),
       el("option", { value: "SUBMITTED", text: "direkt einreichen" })]);
-    var file = el("input", { type: "file", accept: ".csv,.json,text/csv,application/json" });
+    var file = el("input", { type: "file", accept: ".csv,.json,text/csv,application/json", "aria-label": "Import-Datei (CSV/JSON) auswählen" });
     var result = el("div", { "class": "vk-members__list", "aria-live": "polite" });
     var btn = el("button", { type: "button", "class": "vk-btn", text: "Importieren", onclick: doImport });
     wrap.appendChild(el("div", { "class": "vk-form" }, [

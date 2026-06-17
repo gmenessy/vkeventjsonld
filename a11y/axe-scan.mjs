@@ -37,6 +37,25 @@ try {
   await page.locator(".vk-card").first().click();
   await page.waitForSelector("#vk-detail-heading", { timeout: 20000 });
   await scan(page, "Detail");
+
+  // 3) Eingeloggte Ansichten: Editor (Selbsteintrag/Cockpit) + Redaktion.
+  // Login serverseitig setzen (Demodaten: redaktion@vk.example / redaktion).
+  const login = await page.context().request.post(`${BASE}/api/auth/login`, {
+    data: { email: "redaktion@vk.example", password: "redaktion" },
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!login.ok()) {
+    console.error(`A11y-Login fehlgeschlagen (HTTP ${login.status()}) – Editor/Redaktion nicht gescannt.`);
+    failed = true;
+  } else {
+    await page.goto(`${BASE}/#/me/new`, { waitUntil: "networkidle" });
+    await page.waitForSelector(".vk-editor", { timeout: 20000 });
+    await scan(page, "Editor");
+
+    await page.goto(`${BASE}/#/admin`, { waitUntil: "networkidle" });
+    await page.waitForSelector(".vk-chip-row", { timeout: 20000 });
+    await scan(page, "Redaktion");
+  }
 } finally {
   await browser.close();
 }

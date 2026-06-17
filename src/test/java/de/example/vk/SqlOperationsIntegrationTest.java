@@ -31,6 +31,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import java.util.Collections;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -254,6 +255,34 @@ public class SqlOperationsIntegrationTest {
         } catch (ValidationException expected) {
             assertEquals("images", expected.getField());
         }
+    }
+
+    @Test
+    public void auditTrailIsTenantIsolated() {
+        // Aktion in Mandant 1 / VK 1
+        context();
+        String marker = "Audit-Isolation Marker " + System.nanoTime();
+        JsonObject body = JsonParser.parseString("{"
+                + "\"title\":\"" + marker + "\",\"startAt\":\"2026-09-09T10:00\","
+                + "\"attendanceMode\":\"ONLINE\",\"virtualUrl\":\"https://x.example.org\","
+                + "\"category\":\"musik\",\"organizerName\":\"Org\"}").getAsJsonObject();
+        String pub = selfService.create(body);
+        selfService.submit(pub); // SUBMIT_EVENT protokolliert mit Event-Bezug (entityId)
+        assertTrue("eigener Mandant sieht den Audit-Eintrag", trailContains(adminService.auditTrail(500), marker));
+
+        // Anderer Mandant/VK darf den Eintrag NICHT sehen
+        ConfigVk.set(2L, 3L);
+        assertFalse("fremder Mandant darf den Audit-Eintrag nicht sehen",
+                trailContains(adminService.auditTrail(500), marker));
+    }
+
+    private static boolean trailContains(JsonArray trail, String title) {
+        for (int i = 0; i < trail.size(); i++) {
+            if (title.equals(str(trail.get(i).getAsJsonObject(), "eventTitle"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Test

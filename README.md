@@ -79,11 +79,12 @@ anderen, isolierten Kalender.
 
 - **build-test:** `mvn test` (JUnit, inkl. Mandanten-Isolation, Suchperformance,
   Sicherheits-Utils, NL-Parser, CSV-Parser).
-- **a11y:** startet die App (Jetty mit H2-Demodaten) und scannt Listen- und
-  Detailansicht mit **axe-core** (Playwright/Chromium) gegen WCAG 2.1 A/AA. Der
-  Build schlägt fehl, sobald ein Verstoß der Schwere *serious* oder *critical*
-  auftritt – so kann die in den A11y-Sprints erreichte Barrierefreiheit nicht
-  unbemerkt regredieren. Harness unter `a11y/` (`npm install` + `axe-scan.mjs`).
+- **a11y:** startet die App (Jetty mit H2-Demodaten) und scannt mit **axe-core**
+  (Playwright/Chromium) gegen WCAG 2.1 A/AA – **Liste, Detail sowie (eingeloggt)
+  Editor/Cockpit und Redaktion**. Der Build schlägt fehl, sobald ein Verstoß der
+  Schwere *serious* oder *critical* auftritt – so kann die erreichte
+  Barrierefreiheit nicht unbemerkt regredieren. Harness unter `a11y/`
+  (`npm install` + `axe-scan.mjs`).
 
 ## Bauen, Testen, Starten
 
@@ -251,8 +252,9 @@ Aufbauend auf dem öffentlichen Teil sind inzwischen umgesetzt:
   wird zurückgesetzt, der Workflow-Status bleibt; die Wiederherstellung wird
   selbst als neue Version und im Audit-Log festgehalten).
 - **Audit-Log:** Die Redaktion sieht den tenant-gescopten Audit-Trail der
-  Event-Aktionen (Anlegen, Ändern, Einreichen, Freigeben, Veröffentlichen,
-  Wiederherstellen …).
+  Aktionen (Anlegen, Ändern, Einreichen, Freigeben, Veröffentlichen,
+  Wiederherstellen …). `VK_AUDIT_LOG` führt eigene `MANDANT_ID`/`VK_ID`-Spalten,
+  sodass die Isolation nicht von einem Join abhängt und alle Entitätstypen abdeckt.
 
 ## Noch nicht umgesetzt (Spezifikation, spätere Sprints)
 

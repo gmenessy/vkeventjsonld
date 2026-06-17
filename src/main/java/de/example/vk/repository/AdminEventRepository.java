@@ -111,7 +111,8 @@ public class AdminEventRepository {
         }
     }
 
-    /** Audit-Einträge zu Events dieses Mandanten/VK (neueste zuerst), begrenzt. */
+    /** Audit-Einträge dieses Mandanten/VK (neueste zuerst), begrenzt. Tenant-gescoped
+     *  über die eigenen Spalten des Audit-Logs (deckt alle Entitätstypen ab). */
     public JsonArray listEventAudit(int limit) {
         MapSqlParameterSource p = new MapSqlParameterSource()
                 .addValue("m", ConfigVk.requireMandant()).addValue("vk", ConfigVk.requireVkId())
@@ -120,9 +121,9 @@ public class AdminEventRepository {
         jdbc.query("SELECT a.ACTION, a.ENTITY_TYPE, a.NEW_VALUE_JSON, a.CREATED_AT, "
                  + "u.DISPLAY_NAME AS AUTHOR, e.TITLE AS EVENT_TITLE "
                  + "FROM VK_AUDIT_LOG a "
-                 + "JOIN VK_EVENT e ON e.ID = a.ENTITY_ID "
+                 + "LEFT JOIN VK_EVENT e ON e.ID = a.ENTITY_ID AND a.ENTITY_TYPE = 'EVENT' "
                  + "LEFT JOIN VK_USER u ON u.ID = a.USER_ID "
-                 + "WHERE a.ENTITY_TYPE = 'EVENT' AND e.MANDANT_ID = :m AND e.VK_ID = :vk "
+                 + "WHERE a.MANDANT_ID = :m AND a.VK_ID = :vk "
                  + "ORDER BY a.CREATED_AT DESC, a.ID DESC FETCH FIRST :lim ROWS ONLY", p,
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
                     JsonObject o = new JsonObject();

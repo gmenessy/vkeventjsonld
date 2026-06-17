@@ -37,9 +37,9 @@ public class EventInputMapper {
         in.title = HtmlSanitizer.stripAll(Json.optString(body, "title"));
         in.shortDescription = HtmlSanitizer.stripAll(Json.optString(body, "shortDescription"));
         in.descriptionHtml = HtmlSanitizer.sanitize(Json.optString(body, "description"));
-        in.startAt = parseTs(Json.optString(body, "startAt"));
-        in.endAt = parseTs(Json.optString(body, "endAt"));
-        in.doorTime = parseTs(Json.optString(body, "doorTime"));
+        in.startAt = parseTs(Json.optString(body, "startAt"), "startAt");
+        in.endAt = parseTs(Json.optString(body, "endAt"), "endAt");
+        in.doorTime = parseTs(Json.optString(body, "doorTime"), "doorTime");
         in.durationIso = stripToNull(Json.optString(body, "durationIso"));
         String mode = Json.optString(body, "attendanceMode");
         in.attendanceMode = mode == null ? "OFFLINE" : mode.trim().toUpperCase();
@@ -222,7 +222,13 @@ public class EventInputMapper {
         return out;
     }
 
+    /** Rückwärtskompatibel; meldet Fehler unter dem Feld {@code startAt}. */
     public Timestamp parseTs(String s) {
+        return parseTs(s, "startAt");
+    }
+
+    /** Tolerante Datumsanalyse; ein Formatfehler wird unter {@code field} gemeldet. */
+    public Timestamp parseTs(String s, String field) {
         if (s == null || s.trim().isEmpty()) {
             return null;
         }
@@ -240,7 +246,7 @@ public class EventInputMapper {
         try {
             return Timestamp.valueOf(LocalDate.parse(v).atStartOfDay());
         } catch (Exception e) {
-            throw new ValidationException("startAt", "Ungültiges Datumsformat: " + v);
+            throw new ValidationException(field, "Ungültiges Datumsformat: " + v);
         }
     }
 }
