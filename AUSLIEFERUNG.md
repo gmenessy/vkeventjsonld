@@ -154,6 +154,8 @@ kommentiert (`VK_EVENT_SERIES`, `VK_EXPORT_JOB`, `VK_*_DETAILS`, `VK_USER_PARTY`
 
 ```
 vk.war                        – deploybares Artefakt (Java 21, Tomcat 11 / 10.1)
+vk.war.sha256                 – SHA-256-Prüfsumme des WAR
+ci/container-smoke.sh         – End-to-End-Smoke-Test (20 Prüfungen) für die Abnahme
 README.md                     – Projektdokumentation
 AUSLIEFERUNG.md               – dieses Dokument
 db/oracle/V1__schema.sql      – Oracle-19c-Schema + Indizes
