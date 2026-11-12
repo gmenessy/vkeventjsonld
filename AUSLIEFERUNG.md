@@ -2,10 +2,11 @@
 
 | | |
 |---|---|
-| **Stand** | 2026-06-17 |
-| **Commit** | `209bfba` (Branch `claude/busy-clarke-b3aplk`, identisch auf `main`) |
-| **Artefakt** | `vk.war` (≈ 17 MB, Tomcat 9 / Servlet 3.1, `javax.*`) |
-| **Build** | Java 8+ (`release 8`), Maven; 43 Tests grün |
+| **Stand** | 2026-11-12 – Plattform-Upgrade Java 21 / Spring Framework 7 / Jakarta EE 11 |
+| **Commit** | Branch `claude/busy-clarke-b3aplk`, identisch auf `main` (siehe `git log -1`) |
+| **Artefakt** | `vk.war` (≈ 22 MB, `jakarta.*`, Servlet 6.1) |
+| **Container** | Tomcat 11.0 (empfohlen) · Tomcat 10.1 (verifiziert) |
+| **Build** | Java 21 (LTS), Maven 3.9+; 43 Tests grün + 20-Punkte-Smoke-Test je Container |
 
 Relationaler, redaktionell nutzbarer Veranstaltungskalender auf Basis von
 `schema.org/Event` — intern normalisiert (Oracle 19c), nach außen leichte
@@ -53,9 +54,14 @@ isoliert, optimiert auf schnelle Suche bei vielen Events.
 ## 2. Deployment
 
 ### Voraussetzungen
-- Servlet-Container **Tomcat 9** (oder kompatibel, `javax.servlet`)
+- **Java 21** (LTS) als Laufzeit des Containers
+- Servlet-Container **Apache Tomcat 11.0** (empfohlen, offizielle Spring-7-Baseline)
+  oder **Tomcat 10.1** (für diese Anwendung verifiziert, aber außerhalb der
+  offiziellen Spring-7-Baseline – Details im README, Abschnitt „Plattform & Container")
+- **Tomcat 9 und andere `javax.servlet`-Container werden nicht mehr unterstützt**
 - **Oracle 19c** (Produktion) oder eingebettete **H2** (Dev/Demo)
-- JDBC-Treiber im Container-Classpath (Oracle: `ojdbc`)
+- Oracle-JDBC-Treiber (`ojdbc11`) ist im WAR enthalten – keine Treiberablage im
+  Container nötig
 
 ### Schritte
 1. Schema einspielen: `src/main/resources/db/oracle/V1__schema.sql`
@@ -97,7 +103,21 @@ deployen. Dasselbe WAR, unterschiedliche Konfiguration — strikte Isolation.
   allen Feldern, Workflow inkl. Versions-Snapshot, Export, Import, Audit-Isolation).
 - **`OracleSchemaSyntaxTest`** prüft das Oracle-DDL syntaktisch (H2/Oracle-Modus)
   und die Tabellengleichheit beider Schemata.
-- **CI** (`.github/workflows/ci.yml`): Build/Test + A11y-Gate (axe-core).
+- **Container-Smoke-Test** (`ci/container-smoke.sh`, 20 Prüfungen) gegen das
+  ausgelieferte WAR – bestanden auf **Tomcat 11.0.27**, **Tomcat 10.1.61** und
+  **Jetty 12.1.15 (EE11)**.
+- **CI** (`.github/workflows/ci.yml`, Java 21): Build/Test, Container-Matrix
+  (Tomcat 10.1 + 11) und A11y-Gate (axe-core).
+
+### Plattform-Upgrade (dieser Stand)
+- Java 8 → **Java 21**, Spring 5.3 → **Spring Framework 7.0.10**,
+  `javax.servlet` 3.1 → **`jakarta.servlet` 6.1**; Bibliotheken aktualisiert
+  (HikariCP 7, H2 2.5, `ojdbc11`, Gson, jsoup, Velocity, slf4j 2).
+- Spring-7-API: Nachrichten-Konverter über `HttpMessageConverters.ServerBuilder`
+  (alte Listen-API ist zur Entfernung markiert); Compiler-Flag `-parameters`.
+- Behobene Upgrade-Fallen: transitive slf4j-api 1.7 hätte das Logging still
+  deaktiviert (jetzt 2.0.20 gepinnt); `commons-beanutils` 1.9.4 → 1.11.0
+  (CVE-2025-48734).
 
 ---
 
@@ -108,6 +128,13 @@ deployen. Dasselbe WAR, unterschiedliche Konfiguration — strikte Isolation.
 - **Testcontainers/echtes Oracle in der CI** (Thema #9) — SQL-Syntax ist
   stattdessen über `OracleSchemaSyntaxTest` abgesichert.
 - **Frontend-Modularisierung/Bundling** von `app.js` — Verbesserung, kein Fehler.
+- **Claude-Integration modernisieren** — `ClaudeGenAiProvider` spricht die Messages
+  API per `HttpURLConnection` an; empfohlen ist das offizielle Java-SDK
+  (`com.anthropic:anthropic-java`). Das Standardmodell `claude-haiku-4-5` ist
+  Vorgängergeneration; ein Wechsel (z. B. `claude-haiku-5-5`) ist eine eigene
+  Migration (u. a. Thinking-/`max_tokens`-Verhalten) und braucht eine Freigabe.
+- **Tests auf JUnit Jupiter** umstellen (JUnit 4 läuft, ist aber Altbestand).
+- **Virtuelle Threads** (Java 21) im Tomcat-Executor als Option für hohe Last prüfen.
 
 Reservierte, noch nicht verdrahtete Tabellen sind im Schema entsprechend
 kommentiert (`VK_EVENT_SERIES`, `VK_EXPORT_JOB`, `VK_*_DETAILS`, `VK_USER_PARTY`).
@@ -117,7 +144,7 @@ kommentiert (`VK_EVENT_SERIES`, `VK_EXPORT_JOB`, `VK_*_DETAILS`, `VK_USER_PARTY`
 ## 5. Paketinhalt (`vk-auslieferung.zip`)
 
 ```
-vk.war                        – deploybares Artefakt (Tomcat 9)
+vk.war                        – deploybares Artefakt (Java 21, Tomcat 11 / 10.1)
 README.md                     – Projektdokumentation
 AUSLIEFERUNG.md               – dieses Dokument
 db/oracle/V1__schema.sql      – Oracle-19c-Schema + Indizes

@@ -7,17 +7,66 @@ on:
 
 jobs:
   build-test:
-    name: Build & Tests (Maven)
+    name: Build & Tests (Java 21, Maven)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
           cache: maven
-      - name: mvn test
-        run: mvn -B -ntp test
+      - name: mvn package (inkl. Tests)
+        run: mvn -B -ntp package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vk-war
+          path: target/vk.war
+          retention-days: 7
+
+  # Deployt dasselbe WAR auf beide Tomcat-Generationen und faehrt den End-to-End-Smoke-Test.
+  # Tomcat 11 = offizielle Spring-7-Baseline (Servlet 6.1); Tomcat 10.1 (Servlet 6.0) liegt
+  # ausserhalb dieser Baseline und wird hier abgesichert, damit ein Spring-Update, das 10.1
+  # bricht, sofort auffaellt.
+  container:
+    name: Container-Test (Tomcat ${{ matrix.tomcat }})
+    runs-on: ubuntu-latest
+    needs: build-test
+    strategy:
+      fail-fast: false
+      matrix:
+        tomcat: [ "10.1.61", "11.0.27" ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/download-artifact@v4
+        with:
+          name: vk-war
+      - name: Tomcat laden (SHA-512 geprueft)
+        run: |
+          V=${{ matrix.tomcat }}; MAJ=${V%%.*}
+          BASE=https://archive.apache.org/dist/tomcat/tomcat-$MAJ/v$V/bin
+          curl -fsSLO "$BASE/apache-tomcat-$V.tar.gz"
+          curl -fsSL "$BASE/apache-tomcat-$V.tar.gz.sha512" | awk '{print $1"  apache-tomcat-'"$V"'.tar.gz"}' | sha512sum -c -
+          mkdir tomcat && tar -xzf "apache-tomcat-$V.tar.gz" -C tomcat --strip-components=1
+          cp vk.war tomcat/webapps/vk.war
+      - name: Tomcat starten (H2-Demodaten)
+        run: |
+          export VK_UPLOAD_DIR="$RUNNER_TEMP/vk-uploads"
+          tomcat/bin/catalina.sh start
+          for i in $(seq 1 90); do
+            if curl -fsS -o /dev/null http://localhost:8080/vk/api/context; then echo "UP"; exit 0; fi
+            sleep 2
+          done
+          echo "App nicht gestartet:"; tail -80 tomcat/logs/catalina.out; exit 1
+      - name: End-to-End-Smoke-Test
+        run: bash ci/container-smoke.sh http://localhost:8080/vk
+      - name: Tomcat-Log (bei Fehler)
+        if: failure()
+        run: tail -150 tomcat/logs/catalina.out || true
 
   a11y:
     name: Accessibility-Gate (axe-core)
@@ -28,21 +77,21 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
           cache: maven
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: App starten (Jetty, H2-Demodaten)
+      - name: App starten (Jetty 12.1 EE11, H2-Demodaten)
         run: |
-          mvn -B -ntp -q org.eclipse.jetty:jetty-maven-plugin:9.4.57.v20241219:run > jetty.log 2>&1 &
+          mvn -B -ntp -q org.eclipse.jetty.ee11:jetty-ee11-maven-plugin:12.1.15:run > jetty.log 2>&1 &
           echo "warte auf http://localhost:8080 …"
           for i in $(seq 1 90); do
             if curl -fsS -o /dev/null http://localhost:8080/api/context; then echo "UP"; exit 0; fi
             sleep 3
           done
           echo "App nicht gestartet:"; tail -50 jetty.log; exit 1
-      - name: axe-core-Scan (Liste + Detail)
+      - name: axe-core-Scan (Liste, Detail, Editor, Redaktion)
         run: |
           cd a11y
           npm install

@@ -75,11 +75,16 @@ anderen, isolierten Kalender.
 
 ## CI & Accessibility-Gate
 
-`.github/workflows/ci.yml` läuft bei Push/PR und hat zwei Jobs:
+`.github/workflows/ci.yml` läuft bei Push/PR (Java 21) und hat drei Jobs:
 
-- **build-test:** `mvn test` (JUnit, inkl. Mandanten-Isolation, Suchperformance,
-  Sicherheits-Utils, NL-Parser, CSV-Parser).
-- **a11y:** startet die App (Jetty mit H2-Demodaten) und scannt mit **axe-core**
+- **build-test:** `mvn package` inkl. aller Tests (Mandanten-Isolation,
+  Suchperformance, SQL-Operationen, Oracle-Syntax, Sicherheits-Utils, Parser) und
+  stellt das WAR als Artefakt bereit.
+- **container:** deployt **dasselbe WAR** auf **Tomcat 10.1 und Tomcat 11**
+  (Matrix, SHA-512-geprüfter Download) und fährt den End-to-End-Smoke-Test
+  `ci/container-smoke.sh` (20 Prüfungen: Shell/CSP, Suche, JSON-LD, Login/CSRF,
+  Multipart-Upload, Workflow, Versionen, Audit, GenAI, CSV-Export).
+- **a11y:** startet die App (Jetty 12.1 EE11 mit H2-Demodaten) und scannt mit **axe-core**
   (Playwright/Chromium) gegen WCAG 2.1 A/AA – **Liste, Detail sowie (eingeloggt)
   Editor/Cockpit und Redaktion**. Der Build schlägt fehl, sobald ein Verstoß der
   Schwere *serious* oder *critical* auftritt – so kann die erreichte
@@ -88,18 +93,48 @@ anderen, isolierten Kalender.
 
 ## Bauen, Testen, Starten
 
-Voraussetzung: Java 8+ (gebaut mit `release 8`), Maven.
+Voraussetzung: **Java 21** (LTS), Maven 3.9+.
 
 ```bash
 # Tests (startet eingebettete H2 mit ~12.000 Demo-Events)
 mvn test
 
-# Dev-Server (H2, automatisch befüllt) auf http://localhost:8080
-mvn org.eclipse.jetty:jetty-maven-plugin:9.4.57.v20241219:run
+# Dev-Server (Jetty 12.1, Jakarta EE 11; H2 automatisch befüllt) auf http://localhost:8080
+mvn org.eclipse.jetty.ee11:jetty-ee11-maven-plugin:12.1.15:run
 
-# WAR für Tomcat o. Ä.
+# WAR für Tomcat 11 (empfohlen) bzw. Tomcat 10.1
 mvn package      # → target/vk.war
+
+# End-to-End-Smoke-Test gegen eine laufende Instanz
+ci/container-smoke.sh http://localhost:8080/vk
 ```
+
+## Plattform & Container
+
+| | |
+|---|---|
+| Java | 21 (LTS), `maven.compiler.release=21`, Compiler-Flag `-parameters` |
+| Framework | Spring Framework 7.0 (Spring MVC + Spring JDBC), Jakarta EE 11 |
+| Servlet-API | `jakarta.servlet` 6.1 (vom Container bereitgestellt) |
+| Datenbank | Oracle 19c über `ojdbc11`; H2 2.x im Dev-Modus |
+
+**Container-Unterstützung**
+
+| Container | Servlet | Status |
+|---|---|---|
+| Apache Tomcat **11.0** | 6.1 | **Empfohlen** – offizielle Spring-7-Baseline, in CI verifiziert |
+| Apache Tomcat **10.1** | 6.0 | Für diese Anwendung lauffähig und in CI verifiziert, aber **außerhalb** der offiziellen Spring-7-Baseline (siehe unten) |
+| Jetty **12.1** (EE11) | 6.1 | Dev-Server und A11y-Gate |
+| Tomcat 9 / `javax.*` | 4.0 | **Nicht mehr unterstützt** (Jakarta-Namespace) |
+
+*Warum Tomcat 10.1 nur „verifiziert, nicht offiziell"?* Spring Framework 7 setzt
+laut Release Notes Jakarta EE 11 / **Servlet 6.1** voraus („Tomcat 11+, Jetty
+12.1+") und ruft in einigen Klassen Servlet-6.1-APIs auf. Auf den von dieser
+Anwendung genutzten Pfaden (Spring MVC mit `@RestController`) sind diese Aufrufe
+abgesichert bzw. werden nicht erreicht – deshalb läuft das WAR auf Tomcat 10.1.
+Eine künftige Spring-7-Version kann das jedoch ohne Ankündigung ändern; der
+CI-Job **container** fängt einen solchen Bruch sofort ab. Für den produktiven
+Betrieb wird Tomcat 11 empfohlen.
 
 Im Dev-Modus (`VK_DB_MODE=h2`, Standard) legt `DevDataInitializer` Schema und
 Demo-Datensatz beim Start automatisch an.

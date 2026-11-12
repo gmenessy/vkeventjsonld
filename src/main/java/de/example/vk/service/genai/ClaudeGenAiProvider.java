@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
 
@@ -19,8 +19,8 @@ import java.util.Scanner;
  * Schreibzeit im Editor (nicht im Such-Hot-Path). Fehler/Timeouts werden vom
  * vorgelagerten {@link FallbackGenAiProvider} aufgefangen.
  *
- * <p>Implementiert bewusst ohne zusätzliche Abhängigkeit über {@link HttpURLConnection}
- * (Java 8). Antworten werden mit Gson geparst.</p>
+ * <p>Implementiert bewusst ohne zusätzliche Abhängigkeit über {@link HttpURLConnection}.
+ * Antworten werden mit Gson geparst.</p>
  */
 public class ClaudeGenAiProvider implements GenAiProvider {
 
@@ -90,7 +90,8 @@ public class ClaudeGenAiProvider implements GenAiProvider {
 
         HttpURLConnection conn = null;
         try {
-            conn = (HttpURLConnection) new URL(ENDPOINT).openConnection();
+            // URI.create(..).toURL(): new URL(String) ist seit Java 20 veraltet.
+            conn = (HttpURLConnection) URI.create(ENDPOINT).toURL().openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(connectTimeoutMs);
             conn.setReadTimeout(readTimeoutMs);

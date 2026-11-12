@@ -12,11 +12,31 @@
     <name>VK Veranstaltungskalender</name>
     <description>Relationaler Veranstaltungskalender auf Basis von schema.org/Event</description>
 
+    <!--
+      Plattform: Java 21 (LTS), Spring Framework 7, Jakarta EE 11 (Servlet 6.1).
+      Container:
+        - Apache Tomcat 11 (Servlet 6.1): offizielle Spring-7-Baseline, empfohlen.
+        - Apache Tomcat 10.1 (Servlet 6.0): fuer diese Anwendung verifiziert lauffaehig
+          (CI-Matrix), liegt aber ausserhalb der offiziellen Spring-7-Baseline.
+    -->
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.release>8</maven.compiler.release>
-        <spring.version>5.3.39</spring.version>
+        <maven.compiler.release>21</maven.compiler.release>
+        <spring.version>7.0.10</spring.version>
+        <jetty.version>12.1.15</jetty.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <!-- Transitiv ueber velocity-tools-generic 3.1 (dort 1.9.4); 1.11.0 behebt
+                     CVE-2025-48734 (unsicherer Property-Zugriff), API-kompatibel. -->
+                <groupId>commons-beanutils</groupId>
+                <artifactId>commons-beanutils</artifactId>
+                <version>1.11.0</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -32,18 +52,18 @@
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
-            <version>2.10.1</version>
+            <version>2.15.0</version>
         </dependency>
         <dependency>
             <!-- Sicheres serverseitiges HTML-Sanitizing (Spec 25.6/26.3) -->
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
-            <version>1.17.2</version>
+            <version>1.24.1</version>
         </dependency>
         <dependency>
             <groupId>org.apache.velocity</groupId>
             <artifactId>velocity-engine-core</artifactId>
-            <version>2.3</version>
+            <version>2.4.1</version>
         </dependency>
         <dependency>
             <groupId>org.apache.velocity.tools</groupId>
@@ -53,32 +73,40 @@
         <dependency>
             <groupId>com.zaxxer</groupId>
             <artifactId>HikariCP</artifactId>
-            <version>4.0.3</version>
+            <version>7.1.0</version>
         </dependency>
         <dependency>
-            <groupId>javax.servlet</groupId>
-            <artifactId>javax.servlet-api</artifactId>
-            <version>3.1.0</version>
+            <!-- Jakarta EE 11 / Servlet 6.1 – vom Container (Tomcat 11) bereitgestellt -->
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <version>6.1.0</version>
             <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <!-- Explizit gepinnt: Velocity bringt transitiv slf4j-api 1.7 mit; damit wuerde
+                 slf4j-simple 2.x keinen Provider finden und die App liefe ohne Logging. -->
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>2.0.20</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
-            <version>1.7.36</version>
+            <version>2.0.20</version>
         </dependency>
 
         <!-- Dev-Modus: eingebettete H2-Datenbank (Oracle-Kompatibilitaetsmodus) -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <version>2.2.224</version>
+            <version>2.5.252</version>
         </dependency>
 
-        <!-- Oracle JDBC Treiber fuer Produktion -->
+        <!-- Oracle JDBC Treiber fuer Produktion (ojdbc11 = JDK 11+, unterstuetzt Oracle 19c) -->
         <dependency>
             <groupId>com.oracle.database.jdbc</groupId>
-            <artifactId>ojdbc8</artifactId>
-            <version>19.27.0.0</version>
+            <artifactId>ojdbc11</artifactId>
+            <version>23.26.4.0.0</version>
             <scope>runtime</scope>
         </dependency>
 
@@ -102,18 +130,31 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
+                <version>3.14.1</version>
+                <configuration>
+                    <!-- Seit Spring 6.1 Pflicht: Parameternamen fuer @PathVariable/@RequestParam
+                         ohne expliziten Namen werden nur noch ueber -parameters ermittelt. -->
+                    <parameters>true</parameters>
+                    <compilerArgs>
+                        <arg>-Xlint:deprecation</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.6</version>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-war-plugin</artifactId>
                 <version>3.4.0</version>
             </plugin>
-            <!-- Dev-Server: mvn jetty:run -->
+            <!-- Dev-Server (Jakarta EE 11 / Servlet 6.1): mvn jetty:run -->
             <plugin>
-                <groupId>org.eclipse.jetty</groupId>
-                <artifactId>jetty-maven-plugin</artifactId>
-                <version>9.4.57.v20241219</version>
+                <groupId>org.eclipse.jetty.ee11</groupId>
+                <artifactId>jetty-ee11-maven-plugin</artifactId>
+                <version>${jetty.version}</version>
                 <configuration>
                     <httpConnector>
                         <port>8080</port>

@@ -4,12 +4,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.support.PropertySourcesPlaceholderConfigurer;
-import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.HttpMessageConverters;
+import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.http.converter.json.GsonHttpMessageConverter;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-import java.util.List;
+import java.nio.charset.StandardCharsets;
 
 /** Spring-MVC-Konfiguration: JSON-Kommunikation ausschliesslich ueber Gson. */
 @Configuration
@@ -31,10 +32,15 @@ public class WebConfig implements WebMvcConfigurer {
         return converter;
     }
 
+    /**
+     * Spring-7-API (ersetzt das zur Entfernung markierte {@code configureMessageConverters(List)}).
+     * Bewusst schlank: keine automatisch erkannten Standard-Konverter (z. B. Jackson),
+     * sondern JSON ausschliesslich ueber den konfigurierten Gson-Konverter plus Text/CSV.
+     */
     @Override
-    public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
-        converters.add(gsonHttpMessageConverter());
-        converters.add(new org.springframework.http.converter.StringHttpMessageConverter(
-                java.nio.charset.StandardCharsets.UTF_8));
+    public void configureMessageConverters(HttpMessageConverters.ServerBuilder builder) {
+        builder.disableDefaults()
+                .withJsonConverter(gsonHttpMessageConverter())
+                .withStringConverter(new StringHttpMessageConverter(StandardCharsets.UTF_8));
     }
 }
