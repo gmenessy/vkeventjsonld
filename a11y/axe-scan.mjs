@@ -26,7 +26,11 @@ async function scan(page, label) {
 
 const browser = await chromium.launch();
 try {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  // Expliziter Browser-Context: @axe-core/playwright öffnet für die Auswertung eine
+  // Hilfsseite im selben Context und verweigert das bei browser.newPage()
+  // ("Please use browser.newContext()").
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
 
   // 1) Ergebnisübersicht (Liste)
   await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
@@ -34,7 +38,7 @@ try {
   await scan(page, "Liste");
 
   // 2) Detailansicht (erste Karte öffnen)
-  await page.locator(".vk-card").first().click();
+  await page.locator(".vk-card__link").first().click();
   await page.waitForSelector("#vk-detail-heading", { timeout: 20000 });
   await scan(page, "Detail");
 
@@ -48,7 +52,10 @@ try {
     console.error(`A11y-Login fehlgeschlagen (HTTP ${login.status()}) – Editor/Redaktion nicht gescannt.`);
     failed = true;
   } else {
-    await page.goto(`${BASE}/#/me/new`, { waitUntil: "networkidle" });
+    // Echtes Neuladen erzwingen (geänderte Query statt nur Hash): Die bereits geladene
+    // SPA kennt den Login noch nicht und würde bei reinem Hash-Wechsel nach #/login
+    // umleiten. Beim Neustart wartet die SPA auf loadAuth() und routet dann zum Editor.
+    await page.goto(`${BASE}/?a11y=1#/me/new`, { waitUntil: "networkidle" });
     await page.waitForSelector(".vk-editor", { timeout: 20000 });
     await scan(page, "Editor");
 

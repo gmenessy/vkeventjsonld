@@ -25,6 +25,12 @@
   --vk-on-error: #ffffff;
   --vk-success: #2e7d32;
   --vk-warning: #b26a00;
+  /* Textfarben für Status-Inhalte: die Signaltöne oben sind für Flächen/Punkte gedacht;
+     als Text auf getönten Hintergründen erreichen sie WCAG AA (4,5:1) nicht. */
+  --vk-success-text: #1b5e20;
+  --vk-warning-text: #8a5300;
+  --vk-error-text: #8c1d18;
+  --vk-accent-text: #4f378b;
 
   --vk-radius-sm: 8px;
   --vk-radius-md: 16px;
@@ -59,6 +65,10 @@
     --vk-outline: #938f99;
     --vk-outline-variant: #49454f;
     --vk-bg: linear-gradient(135deg, #1a1626 0%, #16181f 45%, #1d1722 100%);
+    --vk-success-text: #a5d6a7;
+    --vk-warning-text: #ffcc80;
+    --vk-error-text: #f2b8b5;
+    --vk-accent-text: #d0bcff;
   }
 }
 
@@ -288,13 +298,24 @@ a { color: var(--vk-primary); }
 /* ---- Karten ---- */
 .vk-cards { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--vk-space-3); }
 .vk-card {
+  position: relative; /* Bezugsrahmen für das Klick-Overlay des Titel-Buttons */
   display: grid; grid-template-columns: 72px 1fr; gap: var(--vk-space-4);
   background: var(--vk-surface-container); border-radius: var(--vk-radius-lg);
   padding: var(--vk-space-4); cursor: pointer; border: 2px solid transparent;
-  text-align: left; width: 100%; color: inherit; font: inherit;
+  text-align: left; width: 100%; color: inherit;
 }
 .vk-card:hover { background: var(--vk-surface-container-high); }
-.vk-card[aria-current="true"] { border-color: var(--vk-primary); }
+.vk-card.is-current { border-color: var(--vk-primary); }
+/* Titel-Button: einziges interaktives Element; ::after spannt über die ganze Karte. */
+.vk-card__link {
+  font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
+  text-align: left; cursor: pointer; scroll-margin-top: 140px;
+}
+.vk-card__link::after {
+  content: ""; position: absolute; inset: 0; border-radius: var(--vk-radius-lg);
+}
+.vk-card__link:focus-visible { outline: none; }
+.vk-card__link:focus-visible::after { outline: var(--vk-focus-ring); outline-offset: 3px; }
 .vk-card__date {
   display: grid; place-content: center; text-align: center;
   background: var(--vk-primary-container); color: var(--vk-on-primary-container);
@@ -313,9 +334,9 @@ a { color: var(--vk-primary); }
   font-size: .75rem; padding: 2px var(--vk-space-2); border-radius: var(--vk-radius-sm);
   background: var(--vk-surface-container-high); color: var(--vk-on-surface-variant);
 }
-.vk-tag--free { background: color-mix(in srgb, var(--vk-success) 18%, transparent); color: var(--vk-success); }
-.vk-tag--status { background: color-mix(in srgb, var(--vk-error) 16%, transparent); color: var(--vk-error); }
-.vk-tag--a11y { background: color-mix(in srgb, var(--vk-primary) 16%, transparent); color: var(--vk-primary); }
+.vk-tag--free { background: color-mix(in srgb, var(--vk-success) 18%, transparent); color: var(--vk-success-text); }
+.vk-tag--status { background: color-mix(in srgb, var(--vk-error) 16%, transparent); color: var(--vk-error-text); }
+.vk-tag--a11y { background: color-mix(in srgb, var(--vk-primary) 16%, transparent); color: var(--vk-accent-text); }
 
 /* ---- Pagination ---- */
 .vk-pagination { display: flex; flex-wrap: wrap; gap: var(--vk-space-2); justify-content: center;
@@ -393,7 +414,7 @@ a { color: var(--vk-primary); }
 .vk-row strong { margin-right: var(--vk-space-3); }
 .vk-row__actions { display: flex; gap: var(--vk-space-2); flex-wrap: wrap; }
 .vk-hint { font-size: .85rem; color: var(--vk-on-surface-variant); }
-.vk-error { color: var(--vk-error); min-height: 1.2em; font-weight: 500; }
+.vk-error { color: var(--vk-error-text); min-height: 1.2em; font-weight: 500; }
 .vk-result-count { font-weight: 600; }
 
 /* ==========================================================================
@@ -424,10 +445,10 @@ a { color: var(--vk-primary); }
 
 .vk-checklist, .vk-hints { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--vk-space-1); }
 .vk-checklist li, .vk-hints li { font-size: .85rem; line-height: 1.4; }
-.vk-checklist .is-ok   { color: var(--vk-success); }
-.vk-checklist .is-miss { color: var(--vk-error); }
+.vk-checklist .is-ok   { color: var(--vk-success-text); }
+.vk-checklist .is-miss { color: var(--vk-error-text); }
 .vk-checklist .is-warn { color: var(--vk-on-surface-variant); }
-.vk-hints li { color: var(--vk-warning); }
+.vk-hints li { color: var(--vk-warning-text); }
 .vk-hints li.vk-hint { color: var(--vk-on-surface-variant); }
 
 .vk-preview { background: var(--vk-surface); border: 1px solid var(--vk-outline-variant);

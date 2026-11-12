@@ -21,6 +21,7 @@
   var searchTimer = null;
   var internalHash = false;        // unterscheidet eigene Hash-Updates von echter Navigation
   var lastFocusedCardId = null;    // fuer Fokus-Restore beim Schliessen der Detailansicht
+  var pendingFocusCardId = null;   // Fokus-Restore, der erst nach dem Neu-Rendern der Liste greifen kann
 
   // ---- DOM-Helfer ---------------------------------------------------------
   function $(id) { return document.getElementById(id); }
@@ -131,7 +132,8 @@
       el("p", { "class": "vk-filter-group__label", id: "vk-cat-label", text: "Kategorie" })
     ]);
     var catTree = renderCategoryTree(categories);
-    catTree.setAttribute("role", "group");
+    // Benannte Liste (implizite Rolle "list"): role="group" auf dem <ul> würde die
+    // Listensemantik aufheben und die <li> verwaisen lassen (axe: listitem).
     catTree.setAttribute("aria-labelledby", "vk-cat-label");
     catGroup.appendChild(catTree);
     body.appendChild(catGroup);
@@ -401,19 +403,38 @@
       cards.appendChild(el("li", {}, [
         el("div", { "class": "vk-empty", text: "Keine Treffer. Passen Sie Suche oder Filter an." })
       ]));
+      if (pendingFocusCardId) { pendingFocusCardId = null; $("vk-results").focus(); }
       return;
     }
     var current = currentDetailId();
     items.forEach(function (ev) {
       cards.appendChild(el("li", {}, [buildCard(ev, current)]));
     });
+    if (pendingFocusCardId) {
+      focusCardOrResults(pendingFocusCardId);
+      pendingFocusCardId = null;
+    }
   }
 
+  /** Fokussiert den Titel-Button der Karte {@code id}; ist sie nicht (mehr) da, die Ergebnisliste. */
+  function focusCardOrResults(id) {
+    var link = id
+      ? document.querySelector('.vk-card[data-event-id="' + cssEscape(id) + '"] .vk-card__link')
+      : null;
+    if (link) { link.focus(); } else { $("vk-results").focus(); }
+  }
+
+  // Barrierefreies Karten-Muster: Die Karte ist ein Container; der Titel trägt den
+  // einzigen Button (zugänglicher Name = sichtbarer Titel, WCAG 2.5.3). Ein CSS-Overlay
+  // (.vk-card__link::after) macht weiterhin die ganze Karte klickbar. Das Datum wird
+  // als Beschreibung (aria-describedby) mit ausgeschriebenem Datum angesagt.
   function buildCard(ev, currentId) {
     var start = parseDate(ev.startAt);
+    var dateId = "vk-card-date-" + ev.id;
     var dateBox = el("div", { "class": "vk-card__date" }, [
-      el("span", { "class": "vk-card__day", text: start ? String(start.getDate()) : "–" }),
-      el("span", { "class": "vk-card__month", text: start ? MONTHS[start.getMonth()] : "" })
+      el("span", { "class": "vk-card__day", "aria-hidden": "true", text: start ? String(start.getDate()) : "–" }),
+      el("span", { "class": "vk-card__month", "aria-hidden": "true", text: start ? MONTHS[start.getMonth()] : "" }),
+      el("span", { "class": "vk-visually-hidden", id: dateId, text: start ? fmtDateLong(start) : "Datum unbekannt" })
     ]);
 
     var meta1 = el("div", { "class": "vk-card__meta" }, [
@@ -432,19 +453,31 @@
       tags.appendChild(el("span", { "class": "vk-tag", text: modeLabel(ev.attendanceMode) }));
     if (ev.hasAccessibilityInfo) tags.appendChild(el("span", { "class": "vk-tag vk-tag--a11y", text: "♿ Barrierefrei-Infos" }));
 
+    var isCurrent = currentId === ev.id;
+    var link = el("button", {
+      type: "button", "class": "vk-card__link",
+      "aria-current": isCurrent ? "true" : "false",
+      "aria-describedby": dateId,
+      text: ev.title,
+      onclick: function () { lastFocusedCardId = ev.id; location.hash = "#/events/" + ev.id; }
+    });
     var body = el("div", { "class": "vk-card__body" }, [
-      el("h3", { "class": "vk-card__title", text: ev.title }),
+      el("h3", { "class": "vk-card__title" }, [link]),
       meta1,
       ev.shortDescription ? el("p", { "class": "vk-card__desc", text: ev.shortDescription }) : null,
       tags
     ]);
 
-    return el("button", {
-      type: "button", "class": "vk-card", "data-event-id": ev.id,
-      "aria-current": currentId === ev.id ? "true" : "false",
-      "aria-label": ev.title + ", " + (start ? fmtDateLong(start) : ""),
-      onclick: function () { lastFocusedCardId = ev.id; location.hash = "#/events/" + ev.id; }
+    return el("article", {
+      "class": "vk-card" + (isCurrent ? " is-current" : ""), "data-event-id": ev.id
     }, [dateBox, body]);
+  }
+
+  /** Markiert eine Karte als aktuell bzw. nicht aktuell (Rahmen + aria-current am Titel-Button). */
+  function setCardCurrent(card, current) {
+    card.classList.toggle("is-current", current);
+    var link = card.querySelector(".vk-card__link");
+    if (link) link.setAttribute("aria-current", current ? "true" : "false");
   }
 
   function formatPrice(p) {
@@ -663,8 +696,8 @@
   }
 
   function highlightActiveCard(id) {
-    document.querySelectorAll(".vk-card").forEach(function (c) {
-      c.setAttribute("aria-current", c.getAttribute("data-event-id") === id ? "true" : "false");
+    document.querySelectorAll(".vk-card[data-event-id]").forEach(function (c) {
+      setCardCurrent(c, c.getAttribute("data-event-id") === id);
     });
   }
 
@@ -674,19 +707,15 @@
     panel.classList.remove("is-active");
     $("vk-detail-content").hidden = true;
     $("vk-detail-placeholder").hidden = false;
-    document.querySelectorAll('.vk-card[aria-current="true"]').forEach(function (c) {
-      c.setAttribute("aria-current", "false");
+    document.querySelectorAll(".vk-card.is-current").forEach(function (c) {
+      setCardCurrent(c, false);
     });
     // Fokus zur ausloesenden Karte zuruecksetzen (WCAG 2.4.3), sonst zur Ergebnisliste.
+    // Die Rückkehr zur Liste löst eine neue Suche aus, die die Karten neu rendert; daher
+    // wird der Fokus zusätzlich vorgemerkt und in renderCards() erneut gesetzt.
     if (wasActive) {
-      var card = lastFocusedCardId
-        ? document.querySelector('.vk-card[data-event-id="' + cssEscape(lastFocusedCardId) + '"]')
-        : null;
-      if (card) {
-        card.focus();
-      } else {
-        $("vk-results").focus();
-      }
+      pendingFocusCardId = lastFocusedCardId;
+      focusCardOrResults(lastFocusedCardId);
       lastFocusedCardId = null;
     }
   }

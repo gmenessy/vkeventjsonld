@@ -118,6 +118,12 @@ deployen. Dasselbe WAR, unterschiedliche Konfiguration — strikte Isolation.
 - Behobene Upgrade-Fallen: transitive slf4j-api 1.7 hätte das Logging still
   deaktiviert (jetzt 2.0.20 gepinnt); `commons-beanutils` 1.9.4 → 1.11.0
   (CVE-2025-48734).
+- **A11y-Gate repariert:** Der CI-Scan schlug seit seiner Einführung an einem
+  Harness-Fehler fehl (Seite ohne expliziten Browser-Context) und hat daher nie
+  wirklich geprüft. Repariert und erstmals vollständig ausgeführt; die dabei
+  gefundenen WCAG-2.1-AA-Verstöße (Kontrast, „Label in Name", Listen-/ARIA-Semantik)
+  sowie eine nicht funktionierende Fokus-Rückgabe sind behoben. Ergebnis: 0 Verstöße
+  in Liste, Detail, Editor und Redaktion – zusätzlich im Dunkelmodus geprüft.
 
 ---
 
@@ -135,6 +141,9 @@ deployen. Dasselbe WAR, unterschiedliche Konfiguration — strikte Isolation.
   Migration (u. a. Thinking-/`max_tokens`-Verhalten) und braucht eine Freigabe.
 - **Tests auf JUnit Jupiter** umstellen (JUnit 4 läuft, ist aber Altbestand).
 - **Virtuelle Threads** (Java 21) im Tomcat-Executor als Option für hohe Last prüfen.
+- **GitHub-Actions-Majors anheben** (`checkout` v7, `setup-java` v6, `setup-node` v7,
+  `upload-/download-artifact` v7/v8): die `@v4`-Stände laufen, erzeugen aber
+  Node-20-Deprecation-Warnungen; Upgrade gezielt mit Changelog-Prüfung durchführen.
 
 Reservierte, noch nicht verdrahtete Tabellen sind im Schema entsprechend
 kommentiert (`VK_EVENT_SERIES`, `VK_EXPORT_JOB`, `VK_*_DETAILS`, `VK_USER_PARTY`).

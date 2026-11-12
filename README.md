@@ -239,6 +239,12 @@ Der Kontext-Root (`/`) wird über ein Velocity-Template (`templates/index.vm`,
   `polite`; Fokus wandert beim Öffnen ins Detail (Überschrift) und beim Schließen
   zurück zur Karte; `scroll-margin` gegen „Focus Not Obscured" (WCAG 2.2 / 2.4.11);
   `aria-busy` während der Suche.
+- A11y-Nachbesserung (Plattform-Upgrade, nachdem das CI-Gate erstmals wirklich
+  lief): barrierefreies Karten-Muster (Titel-Button mit sichtbarem Namen +
+  Klick-Overlay, Datum als `aria-describedby`; WCAG 2.5.3), eigene Text-Farbtokens
+  für Status-Texte in Hell- **und** Dunkelmodus (≥ 4,5:1), benannte Kategorie-Liste,
+  `role="group"` für aktive Filter, sowie eine funktionierende Fokus-Rückgabe nach dem
+  Schließen der Detailansicht (greift jetzt auch nach dem Neu-Rendern der Liste).
 
 ## Redaktion & Selbsteintrag (umgesetzt)
 

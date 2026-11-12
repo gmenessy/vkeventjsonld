@@ -81,7 +81,7 @@ jobs:
           cache: maven
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"   # Node 20 ist EOL; Gate lokal mit Node 22 + Playwright verifiziert
       - name: App starten (Jetty 12.1 EE11, H2-Demodaten)
         run: |
           mvn -B -ntp -q org.eclipse.jetty.ee11:jetty-ee11-maven-plugin:12.1.15:run > jetty.log 2>&1 &

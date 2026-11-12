@@ -38,7 +38,7 @@
         <h2 class="vk-filters__title" id="vk-filters-title">Filter</h2>
         <button type="button" class="vk-btn vk-btn--text" id="vk-filters-reset">Zurücksetzen</button>
         <button type="button" class="vk-btn vk-btn--text vk-filters__close" id="vk-filters-close"
-                aria-label="Filter schließen">Fertig</button>
+                aria-label="Fertig – Filter schließen">Fertig</button>
       </div>
       <div class="vk-filters__body" id="vk-filters-body"><!-- per JS gefüllt --></div>
     </aside>
@@ -59,7 +59,7 @@
                   aria-expanded="false" aria-controls="vk-filters">Filter</button>
         </div>
       </div>
-      <div class="vk-active-filters" id="vk-active-filters" aria-label="Aktive Filter"></div>
+      <div class="vk-active-filters" id="vk-active-filters" role="group" aria-label="Aktive Filter"></div>
       <ol class="vk-cards" id="vk-cards"></ol>
       <nav class="vk-pagination" id="vk-pagination" aria-label="Seiten"></nav>
     </section>
